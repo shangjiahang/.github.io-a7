@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>黄梅暗7 单机版</title>
+<link rel="stylesheet" href="game.css">
+</head>
+<body>
+<div id="board">
+
+  <!-- ===== 顶部固定元素 ===== -->
+
+  <!-- 左上：游戏信息栏 -->
+  <div id="info">
+    轮次: <b id="iRound">1</b><br>
+    庄家: <b id="iDealer">-</b><br>
+    主花色: <b id="iSuit">未确定</b><br>
+    当前分: <b id="iScore">0</b>
+  </div>
+
+  <!-- 右上：功能菜单 -->
+  <div id="menuBtn" onclick="G.toggleMenu()">&#9776; 菜单</div>
+  <div id="menuPanel">
+    <button class="mBtn" id="bViewKitty" onclick="G.viewKitty()" style="display:none">底牌查看</button>
+    <button class="mBtn" onclick="G.toggleHist()">历史记录</button>
+  </div>
+
+  <!-- 主花色 & 反主倍数标签 -->
+  <div id="suitTag"></div>
+  <div id="multTag"></div>
+
+  <!-- ===== 牌堆（发牌动画起点） ===== -->
+  <div id="deck"></div>
+
+  <!-- ===== 顶部：电脑2（手牌→信息→出牌） ===== -->
+  <div id="pa2">
+    <div id="h2"></div>
+    <div class="pInfo" id="pi2">电脑2<br>剩余: 0</div>
+    <div class="pSlot" id="ps2" data-p="2"></div>
+  </div>
+
+  <!-- ===== 左侧：电脑3（手牌[最外]→出牌+信息[靠中]） ===== -->
+  <div id="pa1">
+    <div id="h1"></div>
+    <div id="pa1-inner">
+      <div class="pInfo" id="pi1">电脑3<br>剩余: 0</div>
+      <div class="pSlot" id="ps1" data-p="1"></div>
+    </div>
+  </div>
+
+  <!-- ===== 右侧：电脑1（出牌+信息[靠中]→手牌[最外]） ===== -->
+  <div id="pa3">
+    <div id="pa3-inner">
+      <div class="pInfo" id="pi3">电脑1<br>剩余: 0</div>
+      <div class="pSlot" id="ps3" data-p="3"></div>
+    </div>
+    <div id="h3"></div>
+  </div>
+
+  <!-- ===== 底部：玩家自己（出牌→手牌） ===== -->
+  <div id="pa0">
+    <div class="pSlot" id="ps0" data-p="0"></div>
+    <div id="h0"></div>
+  </div>
+
+  <!-- ===== 控制按钮栏 ===== -->
+  <div id="ctrlBar">
+    <button class="btn bwrn pulseBtn" id="bCall"    onclick="G.humanCall()"   style="display:none">叫主</button>
+    <button class="btn bdng"          id="bCounter"  onclick="G.openCounter()" style="display:none">反主</button>
+    <button class="btn bsuc"          id="bPlay"    onclick="G.humanPlay()"   style="display:none" disabled>出牌</button>
+    <button class="btn bsec"          id="bPass"    onclick="G.humanPass()"   style="display:none">垫牌</button>
+    <button class="btn bpri"          id="bStart"   onclick="G.start()"       style="display:none">开始游戏</button>
+  </div>
+
+  <!-- ===== 浮层元素 ===== -->
+  <div id="roundMsg"></div>
+  <div id="sellTag"></div>
+  <div id="counterTurnHint"></div>
+  <div id="counterCountdown" style="display:none"></div>
+  <div id="callBanner"></div>
+  <div id="playZoom"></div>
+  <div id="playZoomLabel"></div>
+  <div id="msg"></div>
+
+  <!-- 叫主/反主牌展示 -->
+  <div id="reveal">
+    <div id="revealLabel"></div>
+    <div id="revealCards"></div>
+  </div>
+
+  <!-- ===== Modal：换底牌 ===== -->
+  <div class="mOverlay" id="mKitty">
+    <div class="mBox">
+      <h3 id="mKittyTitle">选择底牌</h3>
+      <p id="mKittyTip"></p>
+      <div class="mCards" id="mKittyCards"></div>
+      <div class="mActs">
+        <button class="btn bsuc" onclick="G.confirmKitty()">确认底牌</button>
+        <button class="btn binf" id="bSell" onclick="G.trySell()" style="display:none">卖主</button>
+        <button class="btn bsec" onclick="G.closeM('mKitty')">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal：叫主/反主选择 -->
+  <div class="mOverlay" id="mChoice">
+    <div class="mBox">
+      <h3 id="mChoiceTitle">选择</h3>
+      <div class="mCards" id="mChoiceCards"></div>
+      <div class="mActs">
+        <button class="btn bsec" onclick="G.closeM('mChoice')">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal：本局结算 -->
+  <div class="mOverlay" id="mSettle">
+    <div class="mBox">
+      <h3>本局结算</h3>
+      <div id="mSettleBody"></div>
+      <div class="mActs">
+        <button class="btn bpri" onclick="G.nextGame()">下一局</button>
+        <button class="btn bsec" onclick="G.toggleHist()">历史记录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 历史记录全屏面板 -->
+  <div id="histPanel" style="display:none;flex-direction:column;">
+    <h2>历史结算记录</h2>
+    <div id="histList"></div>
+    <div style="margin-top:16px;">
+      <button class="btn bsec" onclick="G.toggleHist()">关闭</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
