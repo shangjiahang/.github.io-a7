@@ -61,14 +61,14 @@ html, body {
 }
 #menuPanel .mBtn:active { background: rgba(255,255,255,.18); }
 
-/* 主花色 & 反主倍数标签 */
-#suitTag, #multTag {
+/* 主花色标签（已隐藏，信息移至info栏）& 反主倍数标签 */
+#suitTag { display: none !important; }
+#multTag {
   position: absolute;
-  background: rgba(0,0,0,.65); color: #ffe;
+  background: rgba(180,0,0,.8); color: #fff;
   padding: 3px 8px; border-radius: 5px; font-size: 11px; z-index: 100; display: none;
 }
-#suitTag { bottom: 135px; right: 6px; }
-#multTag { bottom: 135px; left: 6px; background: rgba(180,0,0,.8); color: #fff; }
+#multTag { bottom: 135px; left: 6px; }
 
 /* =====================================================
    玩家区域布局

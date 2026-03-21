@@ -88,6 +88,9 @@ const S = {
   sellAttempt: false,
   sellCard:    null,
   kittyOwner:  -1,        // 最后换底的玩家（=反主玩家 或 叫主玩家）
+  kittyPhase:  'caller',  // 'caller'=叫主换底中, 'counter'=反主换底中
+  _counterCont: null,     // 反主换底完成后的继续回调
+  _kittyAfterSell: false, // 卖主成功后的反主换底标记（换底后直接出牌）
   history:     [],
   dealIdx:     0,
   dealTimer:   null,
@@ -178,8 +181,11 @@ const G = {
     S.callerPair7 = false;
     S.sellAttempt = false;
     S.sellCard    = null;
-    S.kittyOwner  = -1;
-    S.dealIdx     = 0;
+    S.kittyOwner      = -1;
+    S.kittyPhase      = 'caller';
+    S._counterCont    = null;
+    S._kittyAfterSell = false;
+    S.dealIdx         = 0;
     S.totalDeal   = S.np * (S.np === 4 ? 25 : 20);
     S.phase       = 'dealing';
     this.hideAllBtns();
@@ -257,9 +263,10 @@ const G = {
     }
 
     S.phase = 'kitty';
-    // 发牌结束后从叫主玩家逆时针下一位开始逐一询问反主
-    const startP = this.prev(S.caller);
-    this._counterTurn(startP, S.caller, () => this._startKittyExchange());
+    // 发牌结束后，先由叫主玩家换底
+    S.kittyPhase   = 'caller';
+    S._counterCont = null;
+    this._startKittyExchange();
   },
 
   // ---------- 叫主 ----------
@@ -429,7 +436,10 @@ const G = {
     // 展示反主牌给所有玩家
     this._showCounterCards(p, opt, () => {
       if (S.sellAttempt) { this._completeSell(true, p); return; }
-      this._contCounter(p);
+      // 反主后立即让反主玩家换底，换底完成后继续轮询下一位
+      this._cancelCounterTurn();
+      S.kittyPhase = 'counter';
+      this._startKittyExchange();
     });
   },
 
@@ -442,15 +452,6 @@ const G = {
     for (const c of opt.cards) cards.appendChild(mkCard(c));
     a.style.display = 'flex';
     setTimeout(() => { a.style.display = 'none'; if (cb) cb(); }, 2200);
-  },
-
-  _contCounter(lastP) {
-    // 反主后直接进入换底，不再继续轮询
-    this._hideCounterCountdown();
-    this._cancelCounterTurn();
-    const owner = S.kittyOwner !== -1 ? S.kittyOwner : S.caller;
-    if (owner === 0) this._startKittyExchange();
-    else this._aiKitty(owner);
   },
 
   _cancelCounterTurn() {
@@ -466,12 +467,17 @@ const G = {
   _startKittyExchange() {
     const owner = S.kittyOwner !== -1 ? S.kittyOwner : S.caller;
     if (owner !== 0) { this._aiKitty(owner); return; }
+    // 给底牌8张加入玩家手牌
     const player = S.ps[0];
     player.hand.push(...S.kitty); S.kitty = [];
     this.sortHand(player.hand);
     const modal = document.getElementById('mKitty');
     const cont  = document.getElementById('mKittyCards');
-    document.getElementById('mKittyTitle').textContent = `选择底牌（请选 ${KITTY} 张）`;
+    const phase = S.kittyPhase;
+    const title = phase === 'counter'
+      ? `反主换底（请选 ${KITTY} 张）`
+      : `叫主换底（请选 ${KITTY} 张）`;
+    document.getElementById('mKittyTitle').textContent = title;
     document.getElementById('mKittyTip').textContent  = `共 ${player.hand.length} 张，点击选中/取消，选 ${KITTY} 张放入底牌`;
     cont.innerHTML = '';
     const selIdx  = new Set();
@@ -488,8 +494,9 @@ const G = {
     });
     modal._selIdx   = selIdx;
     modal._allCards = allCards;
+    // 卖主按钮：仅叫主换底阶段且满足条件时显示
     document.getElementById('bSell').style.display =
-      (S.callerPair7 && S.caller === 0) ? '' : 'none';
+      (phase === 'caller' && S.callerPair7 && S.caller === 0) ? '' : 'none';
     modal.style.display = 'flex';
   },
 
@@ -509,7 +516,23 @@ const G = {
     this.closeM('mKitty');
     this._renderKitty(false);
     this.renderHand(0);
-    this._startPlaying();
+
+    const phase = S.kittyPhase;
+    if (S._kittyAfterSell) {
+      // 卖主成功后的反主换底，换底完成直接出牌
+      S._kittyAfterSell = false;
+      this._startPlaying();
+    } else if (phase === 'caller') {
+      // 叫主玩家换底完成 → 开始反主轮询（从叫主者逆时针下一位开始）
+      S.kittyPhase = 'counter';
+      const startP = this.prev(S.caller);
+      this._counterTurn(startP, S.caller, () => this._startPlaying());
+    } else {
+      // 反主玩家换底完成 → 继续轮询下一位（从该反主者逆时针下一位继续，直到绕回叫主者）
+      const counterP = S.kittyOwner;
+      const nextP    = this.prev(counterP);
+      this._counterTurn(nextP, S.caller, () => this._startPlaying());
+    }
   },
 
   trySell() {
@@ -549,7 +572,16 @@ const G = {
     el.style.display  = 'block';
     setTimeout(() => el.style.display = 'none', 2500);
     if (ok) {
-      this._showMsg(`卖主成功！${S.ps[ctrP].name} 反主`, 2000, () => this._startPlaying());
+      // 卖主成功：反主玩家(ctrP)需先换底，换底完成后直接进入出牌（无需再继续反主轮询）
+      this._showMsg(`卖主成功！${S.ps[ctrP].name} 反主并换底`, 1500, () => {
+        S.kittyPhase = 'counter';
+        S.kittyOwner = ctrP;
+        // 换底完成后，_aiKitty/_confirmKitty 会调 _counterTurn(prev(ctrP), caller, startPlaying)
+        // 为使轮询立即结束，将叫主者临时改为 prev(ctrP)，使下一位就是 skipP
+        // 更简单：直接记录"下次换底后直接出牌"标记
+        S._kittyAfterSell = true;
+        this._startKittyExchange();
+      });
     } else {
       this._showChoice(
         '卖主失败！选择：', '继续游戏', '放弃本局',
@@ -573,13 +605,32 @@ const G = {
     S.ps[p].hand = h.slice(KITTY);
     this._renderKitty(false);
     this.renderHand(p);
-    setTimeout(() => this._startPlaying(), 400);
+
+    const phase = S.kittyPhase;
+    setTimeout(() => {
+      if (S._kittyAfterSell) {
+        S._kittyAfterSell = false;
+        this._startPlaying();
+      } else if (phase === 'caller') {
+        // 叫主 AI 换底完成 → 开始反主轮询
+        S.kittyPhase = 'counter';
+        const startP = this.prev(S.caller);
+        this._counterTurn(startP, S.caller, () => this._startPlaying());
+      } else {
+        // 反主 AI 换底完成 → 继续轮询下一位
+        const counterP = S.kittyOwner;
+        const nextP    = this.prev(counterP);
+        this._counterTurn(nextP, S.caller, () => this._startPlaying());
+      }
+    }, 400);
   },
 
   // ---------- 出牌阶段 ----------
   _startPlaying() {
     S.phase       = 'playing';
-    S.curP        = S.dealer;
+    // 首轮出牌人 = 叫主玩家（S.caller），逆时针依次出牌
+    S.curP        = S.caller;
+    S.dealer      = S.caller;   // dealer 始终跟随叫主玩家（用于标识显示）
     S.round       = 1;
     S.atkScore    = 0;
     S.playedRound = [];
@@ -1143,28 +1194,24 @@ const G = {
   },
 
   _renderKitty(hidden) {
-    // 底牌已存于 S.kitty，更新"底牌查看"按钮可见性
-    // hidden=true 表示卖主中（底牌暂时隐藏），仅 kittyOwner 本人可查看
-    // hidden=false 表示换底完成，kittyOwner 可随时查看
+    // hidden=true 表示卖主中，底牌暂不公开
+    // hidden=false 表示换底完成
     S._kittyHidden = hidden;
     const bvk = document.getElementById('bViewKitty');
     if (!bvk) return;
-    // 只有最后换底玩家（kittyOwner）为玩家自己(0)时显示按钮
-    // AI 换底不向玩家开放查看
+    // kittyOwner=-1 表示无反主，换底者为叫主者(caller)
     const owner = S.kittyOwner !== -1 ? S.kittyOwner : S.caller;
-    if (owner === 0 && S.kitty.length > 0) {
-      bvk.style.display = '';
-    } else {
-      bvk.style.display = 'none';
-    }
+    // 只有最后换底玩家是玩家自己(p=0)时才显示查看按钮
+    bvk.style.display = (owner === 0 && S.kitty.length > 0) ? '' : 'none';
   },
 
   // 底牌查看：仅最后换底玩家（玩家自己）可用
   viewKitty() {
     this.closeMenu();
+    // kittyOwner=-1 表示无反主，换底者为叫主者(caller)
     const owner = S.kittyOwner !== -1 ? S.kittyOwner : S.caller;
     if (owner !== 0) {
-      this._showMsg('只有换底玩家可查看底牌', 1500);
+      this._showMsg('只有换底玩家本人可查看底牌', 1500);
       return;
     }
     if (!S.kitty.length) {
@@ -1172,7 +1219,7 @@ const G = {
       return;
     }
     // 复用 mChoice 弹框展示底牌
-    document.getElementById('mChoiceTitle').textContent = '底牌（仅你可见）';
+    document.getElementById('mChoiceTitle').textContent = `底牌（${KITTY}张，仅你可见）`;
     const cont = document.getElementById('mChoiceCards');
     cont.innerHTML = '';
     for (const c of S.kitty) cont.appendChild(mkCard(c, {}));
@@ -1181,13 +1228,33 @@ const G = {
 
   updateInfo() {
     document.getElementById('iRound').textContent  = S.round;
-    document.getElementById('iDealer').textContent = S.ps[S.dealer]?.name || '-';
+    document.getElementById('iDealer').textContent = S.ps[S.caller >= 0 ? S.caller : S.dealer]?.name || '-';
     const showReal = S.phase === 'playing' || S.phase === 'settle' || S.caller === -1;
     document.getElementById('iSuit').textContent =
       showReal
         ? (S.trumpSuit ? (SNAME[S.trumpSuit] + ' ' + S.trumpSuit) : (S.trumpJoker ? '国主' : '未确定'))
         : '已叫主（保密）';
     document.getElementById('iScore').textContent = S.atkScore;
+
+    // 叫主牌：仅出牌阶段公开显示
+    const cardEl  = document.getElementById('iCalledCard');
+    const noneEl  = document.getElementById('iCalledCardNone');
+    const cardVal = document.getElementById('iCalledCardVal');
+    if (S.phase === 'playing' || S.phase === 'settle') {
+      if (S.calledCard) {
+        const d = cardDisp(S.calledCard);
+        cardVal.textContent  = d.top + d.suit;
+        cardVal.style.color  = d.color === 'red' ? '#ff4444' : '#fff';
+        cardEl.style.display  = '';
+        if (noneEl) noneEl.style.display = 'none';
+      } else {
+        if (cardEl)  cardEl.style.display  = 'none';
+        if (noneEl) { noneEl.textContent = '国主'; noneEl.style.display = ''; }
+      }
+    } else {
+      if (cardEl)  cardEl.style.display  = 'none';
+      if (noneEl) noneEl.style.display   = 'none';
+    }
   },
 
   hideAllBtns() {
