@@ -82,8 +82,10 @@ const S = {
   leadCards:   [],
   playedRound: [],        // 本轮出牌 [{p, cards}]
   atkScore:    0,
+  playerScores: [0, 0, 0, 0], // 各玩家本局累计得分（抓分方抓到分时记录）
   defenders:   [],
   attackers:   [],
+  teamRevealed: false,    // 阵营是否已向所有人公布
   callerPair7: false,
   sellAttempt: false,
   sellCard:    null,
@@ -176,8 +178,10 @@ const G = {
     S.leadCards   = [];
     S.playedRound = [];
     S.atkScore    = 0;
+    S.playerScores = [0, 0, 0, 0];
     S.defenders   = [];
     S.attackers   = [];
+    S.teamRevealed = false;
     S.callerPair7 = false;
     S.sellAttempt = false;
     S.sellCard    = null;
@@ -333,10 +337,11 @@ const G = {
     }
     this._showCounterTurnHint(p);
     if (p === 0) {
-      // 人类玩家：5秒倒计时
+      // 人类玩家：5秒倒计时，提供反主和跳过按钮
       const opts    = this._getCounterOpts(0);
       const hasOpts = opts.length > 0;
       if (hasOpts) document.getElementById('bCounter').style.display = '';
+      document.getElementById('bSkip').style.display = '';
       let remain = 5;
       this._showCounterCountdown(remain, hasOpts);
       this._counterInterval = setInterval(() => {
@@ -347,9 +352,13 @@ const G = {
       this._counterTimer = setTimeout(() => {
         clearInterval(this._counterInterval);
         this._hideEl('bCounter');
+        this._hideEl('bSkip');
+        this._skipDone = null;
         this._hideCounterCountdown();
         this._counterTurn(this.prev(p), skipP, done);
       }, 5000);
+      // 保存跳过回调，供 skipCounter() 调用
+      this._skipDone = () => this._counterTurn(this.prev(p), skipP, done);
     } else {
       // AI玩家：随机等待 5~10 秒（均匀等待，避免根据时长推断手牌）
       const waitMs = 5000 + Math.floor(Math.random() * 5001);
@@ -458,9 +467,22 @@ const G = {
     if (this._counterTimer)   { clearTimeout(this._counterTimer);   this._counterTimer   = null; }
     if (this._counterInterval){ clearInterval(this._counterInterval); this._counterInterval = null; }
     this._hideEl('bCounter');
+    this._hideEl('bSkip');
     this._hideCounterCountdown();
     this._hideCounterTurnHint();
     this._hideEl('callBanner');
+  },
+
+  // 玩家主动点击"跳过"跳过反主
+  skipCounter() {
+    this._cancelCounterTurn();
+    // 重新触发轮询：找到当前被询问的状态继续往下走
+    // 通过标记 _skipDone 回调来恢复流程
+    if (typeof this._skipDone === 'function') {
+      const cb = this._skipDone;
+      this._skipDone = null;
+      cb();
+    }
   },
 
   // ---------- 换底牌 ----------
@@ -727,11 +749,35 @@ const G = {
   },
 
   humanPass() {
+    const n   = S.leadCards.length;
     const sel = this._getSel();
-    if (!sel.length) { this._showMsg('请选择垫牌！', 1000); return; }
-    const n = S.leadCards.length;
-    if (sel.length !== n) { this._showMsg(`必须出 ${n} 张！`, 1000); return; }
-    this._playCards(0, sel);
+    // 若当前已有正确数量的选中牌，直接出牌（第二次点击）
+    if (sel.length === n) {
+      this._playCards(0, sel);
+      return;
+    }
+    // 否则：自动选出最小的 N 张牌（第一次点击）
+    const auto = this._pickSmallest(S.ps[0].hand, n);
+    if (!auto) { this._showMsg(`手牌不足 ${n} 张！`, 1000); return; }
+    // 清除已有选择，选中 auto
+    document.getElementById('h0').querySelectorAll('.card.sel').forEach(el => el.classList.remove('sel'));
+    let remaining = [...auto];
+    document.getElementById('h0').querySelectorAll('.card[data-cid]').forEach(el => {
+      const idx = remaining.indexOf(el.dataset.cid);
+      if (idx !== -1) {
+        el.classList.add('sel');
+        remaining.splice(idx, 1);
+      }
+    });
+    this._updatePlayBtn();
+    this._showMsg(`已自动选出最小的 ${n} 张牌，再次点击出牌确认出牌`, 1800);
+  },
+
+  // 从 hand 中取出 cardVal 最小的 n 张（返回 card id 数组，或 null）
+  _pickSmallest(hand, n) {
+    if (hand.length < n) return null;
+    const sorted = [...hand].sort((a, b) => cardVal(a) - cardVal(b));
+    return sorted.slice(0, n);
   },
 
   // 出牌验证
@@ -761,7 +807,7 @@ const G = {
       // 5.1 不同花色的副牌
       const suits = new Set(nonTrumpCards.map(c => gS(c)));
       if (suits.size > 1) return '副牌必须同一花色！';
-      // 5.2 同花色下不一致的副牌（连对/AAK/KKA/677/778除外）
+      // 5.2 同花色下不一致的副牌（连对/AAK/KKA/677/778/联对/联对+单张除外）
       if (nonTrumpCards.length >= 2) {
         const ranks = nonTrumpCards.map(c => gR(c)).sort();
         if (!this._isAllowedNonTrumpCombo(ranks)) {
@@ -769,10 +815,32 @@ const G = {
         }
       }
     }
+    if (trumpCards.length >= 2) {
+      // 主牌组合同样验证牌型合法性
+      const ranks = trumpCards.map(c => gR(c)).sort();
+      if (!this._isAllowedTrumpCombo(trumpCards, ranks)) {
+        return '主牌出牌组合不符合规则！';
+      }
+    }
     return null;
   },
 
-  // 允许的副牌组合：对子、AAK、KKA、677、778、联对（此处简化为同点数对子或特定三张）
+  // 允许的主牌组合（利用 cardVal 排序后检测，逻辑同副牌但用 cardVal 代替点数连续性）
+  _isAllowedTrumpCombo(trumpCards, sortedRanks) {
+    const n = trumpCards.length;
+    if (n === 2) return this._isPair(trumpCards);
+    if (n === 3) {
+      // 三张主牌：允许 AAK/KKA/677/778 结构（含主牌特殊级牌）
+      // 复用副牌检测，并允许任意高对/低对型
+      const sv = trumpCards.map(cardVal).sort((a, b) => a - b);
+      return (sv[1] === sv[2] && sv[0] !== sv[1]) || (sv[0] === sv[1] && sv[1] !== sv[2]);
+    }
+    if (n >= 4 && n % 2 === 0) return this._isConsecPairs(sortedRanks);
+    if (n >= 5 && n % 2 !== 0) return this._isChainWithKicker(sortedRanks);
+    return false;
+  },
+
+  // 允许的副牌组合：对子、AAK、KKA、677、778、联对、联对+1单张
   _isAllowedNonTrumpCombo(sortedRanks) {
     const n = sortedRanks.length;
     if (n === 2) {
@@ -784,9 +852,13 @@ const G = {
       const allowed = [['A','A','K'],['A','K','K'],['6','7','7'],['7','7','8']];
       return allowed.some(p => p.every((r, i) => r === sortedRanks[i]));
     }
-    if (n >= 4) {
+    if (n >= 4 && n % 2 === 0) {
       // 联对：检查是否为连续对子（AABB...）
       return this._isConsecPairs(sortedRanks);
+    }
+    if (n >= 5 && n % 2 !== 0) {
+      // 联对+1单张
+      return this._isChainWithKicker(sortedRanks);
     }
     return false;
   },
@@ -803,6 +875,46 @@ const G = {
       if (vals[i] - vals[i-1] !== 1) return false;
     }
     return true;
+  },
+
+  // 判断 sortedRanks 是否为"联对+1单张"结构
+  // 单张必须与联对的最低对或最高对点数相邻（差1）
+  _isChainWithKicker(sortedRanks) {
+    const n = sortedRanks.length;
+    if (n < 5 || n % 2 === 0) return false; // 奇数且至少5张（2对+1）
+    // 逐一尝试去掉每个位置的牌，看剩余是否构成联对
+    for (let skip = 0; skip < n; skip++) {
+      const rest = sortedRanks.filter((_, i) => i !== skip);
+      if (!this._isConsecPairs(rest)) continue;
+      // 验证单张与联对首尾相邻
+      const kicker = sortedRanks[skip];
+      const kv = RV[kicker] || 0;
+      // 联对最低点（rest[0]）和最高点（rest[rest.length-1]）
+      const chainMin = RV[rest[0]] || 0;
+      const chainMax = RV[rest[rest.length - 1]] || 0;
+      if (kv === chainMin - 1 || kv === chainMax + 1) return true;
+    }
+    return false;
+  },
+
+  // 取联对+单张中联对部分的最小 cardVal（用于 power 计算）
+  _chainKickerPower(cards) {
+    const ranks = cards.map(c => gR(c)).sort();
+    for (let skip = 0; skip < ranks.length; skip++) {
+      const rest = ranks.filter((_, i) => i !== skip);
+      if (this._isConsecPairs(rest)) {
+        // 找到联对部分，取其对应 cards 中最小的 cardVal
+        const restCards = [];
+        const usedIdx = new Set();
+        for (const r of rest) {
+          const idx = cards.findIndex((c, i) => !usedIdx.has(i) && gR(c) === r);
+          if (idx !== -1) { restCards.push(cards[idx]); usedIdx.add(idx); }
+        }
+        const sv = restCards.map(cardVal).sort((a, b) => a - b);
+        return sv[0];
+      }
+    }
+    return 0;
   },
 
   // 跟牌验证
@@ -825,13 +937,22 @@ const G = {
       const i = h.indexOf(c);
       if (i !== -1) h.splice(i, 1);
     }
-    if (S.playedRound.length === 0) S.leadCards = cards;
+    const isLead = S.playedRound.length === 0;
+    if (isLead) S.leadCards = cards;
     S.playedRound.push({ p, cards });
     this.renderHand(p);
     this.renderPlayed(p, cards);
+    if (isLead) this._markLeader(p);
     this.showPlayZoom(p, cards);
     this.hideAllBtns();
     this.updateInfo();
+
+    // 检测：非叫主玩家出了叫主牌 → 公布阵营
+    if (!S.teamRevealed && p !== S.caller && S.calledCard && cards.includes(S.calledCard)) {
+      S.teamRevealed = true;
+      setTimeout(() => this._showTeamReveal(), 400);
+    }
+
     if (S.playedRound.length === S.np) {
       setTimeout(() => this._endRound(), 1200);
     } else {
@@ -859,6 +980,30 @@ const G = {
       zoom.style.display = 'none';
       lbl.style.display  = 'none';
     }, 2000);
+  },
+
+  // ---------- 阵营公布 ----------
+  _showTeamReveal() {
+    const atkNames = S.attackers.map(i => (i === 0 ? '你' : S.ps[i].name)).join('、');
+    const defNames = S.defenders.map(i => (i === 0 ? '你' : S.ps[i].name)).join('、');
+    // 判断玩家自己阵营
+    const playerSide = S.attackers.includes(0) ? '抓分方' : '守分方';
+    const teammate   = S.attackers.includes(0)
+      ? S.attackers.filter(i => i !== 0).map(i => S.ps[i].name).join('、')
+      : S.defenders.filter(i => i !== 0).map(i => S.ps[i].name).join('、');
+
+    const title = document.getElementById('mChoiceTitle');
+    const cont  = document.getElementById('mChoiceCards');
+    title.textContent = '阵营公布';
+    cont.innerHTML = `
+      <div style="width:100%;text-align:left;line-height:2;font-size:14px;padding:4px 0">
+        <div><span style="color:#f90">抓分方：</span><b>${atkNames}</b></div>
+        <div><span style="color:#4af">守分方：</span><b>${defNames}</b></div>
+        <hr style="border-color:rgba(255,255,255,.2);margin:6px 0">
+        <div>你是 <b style="color:${playerSide === '抓分方' ? '#f90' : '#4af'}">${playerSide}</b>，
+        队友：<b>${teammate || '无（独自一队）'}</b></div>
+      </div>`;
+    document.getElementById('mChoice').style.display = 'flex';
   },
 
   // ---------- AI出牌 ----------
@@ -905,11 +1050,17 @@ const G = {
     const winner = this._calcWinner();
     let rs = 0;
     for (const e of S.playedRound) for (const c of e.cards) rs += cardScore(c);
-    if (S.attackers.includes(winner)) S.atkScore += rs;
+    if (S.attackers.includes(winner)) {
+      S.atkScore += rs;
+      // 本轮得分全归赢牌玩家统计
+      S.playerScores[winner] = (S.playerScores[winner] || 0) + rs;
+    }
     this.updateInfo();
+    this.renderAll(); // 刷新各玩家pInfo得分
     const lastWinCards = S.playedRound.find(e => e.p === winner)?.cards || [];
     const done = S.ps.every(p => p.hand.length === 0);
     setTimeout(() => {
+      this._clearLeader();
       S.playedRound = []; S.leadCards = [];
       S.round++;
       S.curP = winner;
@@ -929,39 +1080,165 @@ const G = {
     return best.p;
   },
 
+  // ---------- 出牌大小比较 ----------
+
+  // 判断一组牌的牌型，返回 { type, power }
+  // type: 'single'|'pair'|'trio_aam'|'trio_maa'|'trio_677'|'trio_778'|'chain'
+  // power: 用于同牌型间比较的数值（越大越强）
+  _playType(cards) {
+    const n = cards.length;
+    const vals = cards.map(cardVal);
+
+    if (n === 1) {
+      return { type: 'single', power: vals[0] };
+    }
+
+    if (n === 2) {
+      if (this._isPair(cards)) {
+        // 对子：用最小值（两张相同，取任意一张）
+        return { type: 'pair', power: Math.min(...vals) };
+      }
+      // 非对子的两张牌（应不允许，但保底处理）
+      return { type: 'single2', power: Math.max(...vals) };
+    }
+
+    if (n === 3) {
+      // 按 cardVal 排序后判断
+      const sv = [...vals].sort((a, b) => a - b); // 升序
+      // AAK：最大两张相同（AA），较小一张是K
+      // 用 cardVal 来判断：最大两张相等且第三张不等
+      if (sv[1] === sv[2] && sv[0] !== sv[1]) {
+        // 对在高端：类 AAK 结构，power = 对子那端的值（sv[1]）
+        return { type: 'trio_high_pair', power: sv[1] };
+      }
+      if (sv[0] === sv[1] && sv[1] !== sv[2]) {
+        // 对在低端：类 KKA 或 677/778 结构
+        // 677：pair=7(低)，单张=6；778：pair=7(高)，单张=8
+        // power 仍用对子那端的值（sv[0]）
+        return { type: 'trio_low_pair', power: sv[0] };
+      }
+      // 三张全同（理论上不会出现）
+      return { type: 'trio_all', power: sv[0] };
+    }
+
+    if (n >= 4 && n % 2 === 0) {
+      // 联对：AABB CC...（按对排列，最小对决定大小）
+      const sv = [...vals].sort((a, b) => a - b);
+      const isPairs = this._isConsecPairs(cards.map(c => gR(c)).sort());
+      if (isPairs) {
+        // 联对 power = 最小的对子值
+        return { type: 'chain', power: sv[0] };
+      }
+    }
+
+    if (n >= 5 && n % 2 !== 0) {
+      // 联对+1单张：去掉单张后为联对
+      const ranks = cards.map(c => gR(c)).sort();
+      if (this._isChainWithKicker(ranks)) {
+        // power = 联对部分最小对的 cardVal（找出联对部分）
+        const chainPower = this._chainKickerPower(cards);
+        return { type: 'chain_kicker', power: chainPower };
+      }
+    }
+
+    // 其他：fallback 到最大值
+    return { type: 'other', power: Math.max(...vals) };
+  },
+
+  // 判断挑战方(chal)是否打败当前最强方(cur)，leadCards为首出牌
   _beats(chal, cur) {
-    const ct  = chal.some(isTrump);
-    const ct2 = cur.some(isTrump);
-    if (ct  && !ct2) return true;
-    if (!ct &&  ct2) return false;
-    if (ct  &&  ct2) {
-      const lp = this._isPair(S.leadCards);
-      const cp = this._isPair(chal);
-      const dp = this._isPair(cur);
-      if (lp) {
-        if (cp && !dp) return true;
-        if (!cp && dp) return false;
-        if (cp && dp)  return Math.min(...chal.map(cardVal)) > Math.min(...cur.map(cardVal));
-        return false;
+    const chalTrump = chal.some(isTrump);
+    const curTrump  = cur.some(isTrump);
+    const leadTrump = S.leadCards.some(isTrump);
+
+    // 单张：简单比 cardVal
+    if (S.leadCards.length === 1) {
+      if (chalTrump && !curTrump) return true;
+      if (!chalTrump && curTrump) return false;
+      if (!chalTrump && !curTrump) {
+        // 副牌单张：必须同花色才能比
+        const leadS = gS(S.leadCards[0]);
+        const chalS = gS(chal[0]);
+        const curS  = gS(cur[0]);
+        if (chalS !== leadS) return false;           // 挑战方不是首出花色，不算
+        if (curS !== leadS) return true;             // 当前持有者也不是首出花色，挑战方赢
+        return cardVal(chal[0]) > cardVal(cur[0]);
       }
-      return Math.max(...chal.map(cardVal)) > Math.max(...cur.map(cardVal));
+      // 同为主牌
+      return cardVal(chal[0]) > cardVal(cur[0]);
     }
-    // 副牌：需同花色且非主牌
-    if (!isJk(chal[0]) && !isJk(cur[0])) {
-      if (gS(chal[0]) !== gS(S.leadCards[0])) return false;
-      if (gS(chal[0]) !== gS(cur[0]) && gS(cur[0]) === gS(S.leadCards[0])) return false;
-      const lp = this._isPair(S.leadCards);
-      const cp = this._isPair(chal);
-      const dp = this._isPair(cur);
-      if (lp) {
-        if (cp && !dp) return true;
-        if (!cp && dp) return false;
-        if (cp && dp)  return Math.min(...chal.map(cardVal)) > Math.min(...cur.map(cardVal));
-        return false;
-      }
-      return Math.max(...chal.map(cardVal)) > Math.max(...cur.map(cardVal));
+
+    // 组合牌
+    const leadType = this._playType(S.leadCards);
+
+    // 副牌场景：检查花色归属（只有跟首出花色才有资格比）
+    if (!leadTrump) {
+      const leadS = gS(S.leadCards[0]);
+      if (!chalTrump && gS(chal[0]) !== leadS) return false;  // 挑战方非首出花色
+      if (chalTrump && !curTrump && gS(cur[0]) !== leadS) return true; // 挑战方主牌 > 当前非主
+      if (!chalTrump && curTrump) return false;                         // 挑战方非主 < 当前主
     }
-    return false;
+
+    // 主牌场景：挑战方有主无主的基础比较
+    if (leadTrump) {
+      if (chalTrump && !curTrump) return true;
+      if (!chalTrump && curTrump) return false;
+      if (!chalTrump && !curTrump) return false;
+    }
+
+    // 到这里：双方同为主牌 或 双方同为副牌同花色，进行牌型比较
+    const chalType = this._playType(chal);
+    const curType  = this._playType(cur);
+
+    // 单张（作为 fallback）
+    if (leadType.type === 'single' || leadType.type === 'single2' || leadType.type === 'other') {
+      return chalType.power > curType.power;
+    }
+
+    // 对子：只有都是对子才能互比，否则挑战方的非对子无法超越
+    if (leadType.type === 'pair') {
+      const chalIsPair = chalType.type === 'pair';
+      const curIsPair  = curType.type === 'pair';
+      if (chalIsPair && !curIsPair) return true;
+      if (!chalIsPair && curIsPair) return false;
+      if (chalIsPair && curIsPair)  return chalType.power > curType.power;
+      return false;
+    }
+
+    // 三张（AAK/KKA/677/778）：
+    // 同类型（高对型 vs 高对型，低对型 vs 低对型）才比 power
+    if (leadType.type === 'trio_high_pair' || leadType.type === 'trio_low_pair' || leadType.type === 'trio_all') {
+      const chalMatch = (chalType.type === leadType.type);
+      const curMatch  = (curType.type  === leadType.type);
+      if (chalMatch && !curMatch) return true;
+      if (!chalMatch && curMatch) return false;
+      if (chalMatch && curMatch)  return chalType.power > curType.power;
+      // 双方都不匹配牌型时，比最大值（边界情况）
+      return chalType.power > curType.power;
+    }
+
+    // 联对：都是联对才能比
+    if (leadType.type === 'chain') {
+      const chalIsChain = chalType.type === 'chain';
+      const curIsChain  = curType.type  === 'chain';
+      if (chalIsChain && !curIsChain) return true;
+      if (!chalIsChain && curIsChain) return false;
+      if (chalIsChain && curIsChain)  return chalType.power > curType.power;
+      return false;
+    }
+
+    // 联对+单张：都是 chain_kicker 才能互比联对部分
+    if (leadType.type === 'chain_kicker') {
+      const chalIsKicker = chalType.type === 'chain_kicker';
+      const curIsKicker  = curType.type  === 'chain_kicker';
+      if (chalIsKicker && !curIsKicker) return true;
+      if (!chalIsKicker && curIsKicker) return false;
+      if (chalIsKicker && curIsKicker)  return chalType.power > curType.power;
+      return false;
+    }
+
+    // 兜底：比最大 cardVal
+    return Math.max(...chal.map(cardVal)) > Math.max(...cur.map(cardVal));
   },
 
   _isPair(cards) {
@@ -990,15 +1267,27 @@ const G = {
   _doSettle() {
     S.phase = 'settle';
     const sc = S.atkScore;
+    // 判断玩家(0)的阵营
+    const playerIsAtk = S.attackers.includes(0);
     let txt, cls, chips;
-    if (sc === 0)        { txt = '大光（0分）'; cls = 'rBig';  chips = '保分方 +4筹'; }
-    else if (sc <= 40)   { txt = `小光（${sc}分）`; cls = 'rLose'; chips = '保分方 +2筹'; }
-    else if (sc < 80)    { txt = `普通输（${sc}分）`; cls = 'rLose'; chips = '保分方 +1筹'; }
-    else {
+    // 按客观结果确定胜负和筹码，txt/cls 依据玩家实际阵营描述
+    if (sc === 0) {
+      chips = '保分方 +4筹';
+      txt   = playerIsAtk ? `大光（0分），你们输了！` : `大光（0分），你们赢了！`;
+      cls   = playerIsAtk ? 'rBig' : 'rWin';
+    } else if (sc <= 40) {
+      chips = '保分方 +2筹';
+      txt   = playerIsAtk ? `小光（${sc}分），你们输了！` : `小光（${sc}分），你们赢了！`;
+      cls   = playerIsAtk ? 'rLose' : 'rWin';
+    } else if (sc < 80) {
+      chips = '保分方 +1筹';
+      txt   = playerIsAtk ? `抓分不足（${sc}分），你们输了！` : `防守成功（${sc}分），你们赢了！`;
+      cls   = playerIsAtk ? 'rLose' : 'rWin';
+    } else {
       const extra = Math.floor((sc - 80) / 40) + 1;
-      txt   = `抓分方胜！（${sc}分）`;
-      cls   = 'rWin';
       chips = `抓分方 +${extra}筹`;
+      txt   = playerIsAtk ? `抓分方胜！（${sc}分）` : `防守失败（${sc}分），你们输了！`;
+      cls   = playerIsAtk ? 'rWin' : 'rLose';
     }
     const atkN = S.attackers.map(i => S.ps[i].name).join('、');
     const defN = S.defenders.map(i => S.ps[i].name).join('、');
@@ -1069,7 +1358,19 @@ const G = {
     cont.innerHTML = '';
 
     if (p === 0) {
-      if (info) info.style.display = 'none';
+      // 玩家自己：出牌阶段显示得分标签
+      if (info) {
+        const isCaller = S.caller === 0;
+        if ((S.phase === 'playing' || S.phase === 'settle') && !isCaller) {
+          const sc = S.playerScores[0] || 0;
+          info.innerHTML = `你<br>得分: ${sc}`;
+          info.className = 'pInfo';
+          if (p === S.curP && S.phase === 'playing') info.classList.add('active');
+          info.style.display = '';
+        } else {
+          info.style.display = 'none';
+        }
+      }
       this.sortHand(h);
       const bw    = document.getElementById('board').offsetWidth || 360;
       const maxW  = bw - 120;
@@ -1138,7 +1439,10 @@ const G = {
     } else {
       // AI玩家
       if (info) {
-        info.innerHTML  = `${S.ps[p].name}<br>剩余: ${h.length}`;
+        const isCaller = S.caller === p;
+        const sc = (!isCaller && (S.phase === 'playing' || S.phase === 'settle')) ? (S.playerScores[p] || 0) : null;
+        const scoreLine = sc !== null ? `<br>得分: ${sc}` : '';
+        info.innerHTML  = `${S.ps[p].name}<br>剩余: ${h.length}${scoreLine}`;
         info.className  = 'pInfo';
         if (p === S.dealer && S.phase !== 'idle') info.classList.add('dealer');
         if (p === S.curP   && S.phase === 'playing') info.classList.add('active');
@@ -1183,6 +1487,23 @@ const G = {
         }
       }
       sl.appendChild(el);
+    }
+  },
+
+  // 标记本轮首出玩家
+  _markLeader(p) {
+    this._clearLeader();
+    const sl   = document.getElementById(`ps${p}`);
+    const info = document.getElementById(`pi${p}`);
+    if (sl)   sl.classList.add('leader');
+    if (info) info.classList.add('leader');
+  },
+
+  // 清除首出标记
+  _clearLeader() {
+    for (let i = 0; i < 4; i++) {
+      document.getElementById(`ps${i}`)?.classList.remove('leader');
+      document.getElementById(`pi${i}`)?.classList.remove('leader');
     }
   },
 
@@ -1234,13 +1555,14 @@ const G = {
       showReal
         ? (S.trumpSuit ? (SNAME[S.trumpSuit] + ' ' + S.trumpSuit) : (S.trumpJoker ? '国主' : '未确定'))
         : '已叫主（保密）';
-    document.getElementById('iScore').textContent = S.atkScore;
 
-    // 叫主牌：仅出牌阶段公开显示
+    // 叫主牌：出牌/结算阶段所有人可见；叫主玩家本人全程可见
     const cardEl  = document.getElementById('iCalledCard');
     const noneEl  = document.getElementById('iCalledCardNone');
     const cardVal = document.getElementById('iCalledCardVal');
-    if (S.phase === 'playing' || S.phase === 'settle') {
+    const showCard = (S.phase === 'playing' || S.phase === 'settle')
+                   || (S.caller === 0 && S.calledCard != null);
+    if (showCard) {
       if (S.calledCard) {
         const d = cardDisp(S.calledCard);
         cardVal.textContent  = d.top + d.suit;
@@ -1258,7 +1580,7 @@ const G = {
   },
 
   hideAllBtns() {
-    ['bCall','bCounter','bPlay','bPass','bStart'].forEach(id => {
+    ['bCall','bCounter','bSkip','bPlay','bPass','bStart'].forEach(id => {
       const e = document.getElementById(id);
       if (e) e.style.display = 'none';
     });
