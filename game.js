@@ -756,8 +756,8 @@ const G = {
       this._playCards(0, sel);
       return;
     }
-    // 否则：自动选出最小的 N 张牌（第一次点击）
-    const auto = this._pickSmallest(S.ps[0].hand, n);
+    // 否则：智能选牌（第一次点击）
+    const auto = this._pickSmartPass(S.ps[0].hand, n);
     if (!auto) { this._showMsg(`手牌不足 ${n} 张！`, 1000); return; }
     // 清除已有选择，选中 auto
     document.getElementById('h0').querySelectorAll('.card.sel').forEach(el => el.classList.remove('sel'));
@@ -770,7 +770,56 @@ const G = {
       }
     });
     this._updatePlayBtn();
-    this._showMsg(`已自动选出最小的 ${n} 张牌，再次点击出牌确认出牌`, 1800);
+    this._showMsg(`已自动选出推荐垫牌，再次点击垫牌确认出牌`, 1800);
+  },
+
+  // 智能垫牌选牌：满足跟牌规则，同时依角色和本轮得分情况优化垫牌内容
+  _pickSmartPass(hand, n) {
+    if (hand.length < n) return null;
+
+    const lg   = suitGroup(S.leadCards[0]);
+    const same = hand.filter(c => suitGroup(c) === lg);
+    const other = hand.filter(c => suitGroup(c) !== lg);
+
+    // 必须先出同花色的牌（跟牌规则）
+    const mustN = Math.min(same.length, n);
+    // 同花色部分：按 cardVal 升序（保留大牌）
+    const sameSorted = [...same].sort((a, b) => cardVal(a) - cardVal(b));
+    const forced = sameSorted.slice(0, mustN);      // 必须出的同花色牌
+    const needExtra = n - mustN;                     // 还需垫的张数
+
+    if (needExtra === 0) return forced;
+
+    // 需要从 other（非同花色）中选 needExtra 张垫牌
+    const isDefender  = S.defenders.includes(0);
+    const isAttacker  = S.attackers.includes(0);
+
+    // 检查本轮前置玩家是否已出分牌（供抓分方判断）
+    const priorScore = S.playedRound.reduce((sum, e) => {
+      return sum + e.cards.reduce((s, c) => s + cardScore(c), 0);
+    }, 0);
+    const hasScore = priorScore > 0;
+
+    // 按策略对 other 排序选 needExtra 张
+    let extras;
+    if (isDefender) {
+      // 守分方：尽量不出分牌，无奈时才出最小分
+      const noScore  = other.filter(c => cardScore(c) === 0).sort((a, b) => cardVal(a) - cardVal(b));
+      const hasScoreCards = other.filter(c => cardScore(c) > 0).sort((a, b) => cardScore(a) - cardScore(b));
+      extras = [...noScore, ...hasScoreCards].slice(0, needExtra);
+    } else if (isAttacker && hasScore) {
+      // 抓分方 + 本轮有人出了分牌：优先垫分牌（贡献分数），分相同则 cardVal 小的先垫
+      const withScore = other.filter(c => cardScore(c) > 0).sort((a, b) => cardScore(b) - cardScore(a) || cardVal(a) - cardVal(b));
+      const noScore   = other.filter(c => cardScore(c) === 0).sort((a, b) => cardVal(a) - cardVal(b));
+      extras = [...withScore, ...noScore].slice(0, needExtra);
+    } else {
+      // 抓分方 + 本轮无分牌（不值得垫分）：优先垫非分牌
+      const noScore  = other.filter(c => cardScore(c) === 0).sort((a, b) => cardVal(a) - cardVal(b));
+      const withScore = other.filter(c => cardScore(c) > 0).sort((a, b) => cardScore(a) - cardScore(b));
+      extras = [...noScore, ...withScore].slice(0, needExtra);
+    }
+
+    return [...forced, ...extras];
   },
 
   // 从 hand 中取出 cardVal 最小的 n 张（返回 card id 数组，或 null）

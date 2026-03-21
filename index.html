@@ -139,5 +139,40 @@
 </div>
 
 <script src="game.js"></script>
+<script>
+// #info 拖拽移动
+(function () {
+  const el = document.getElementById('info');
+  let ox = 0, oy = 0, sx = 0, sy = 0, dragging = false;
+
+  function onDown(e) {
+    dragging = true;
+    const pt = e.touches ? e.touches[0] : e;
+    sx = pt.clientX; sy = pt.clientY;
+    const rect = el.getBoundingClientRect();
+    ox = rect.left; oy = rect.top;
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const pt = e.touches ? e.touches[0] : e;
+    const dx = pt.clientX - sx, dy = pt.clientY - sy;
+    const brd = document.getElementById('board').getBoundingClientRect();
+    const nx = Math.max(0, Math.min(brd.width  - el.offsetWidth,  ox - brd.left + dx));
+    const ny = Math.max(0, Math.min(brd.height - el.offsetHeight, oy - brd.top  + dy));
+    el.style.left = nx + 'px';
+    el.style.top  = ny + 'px';
+    e.preventDefault();
+  }
+  function onUp() { dragging = false; }
+
+  el.addEventListener('mousedown',  onDown, { passive: false });
+  el.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('mousemove',  onMove, { passive: false });
+  document.addEventListener('touchmove',  onMove, { passive: false });
+  document.addEventListener('mouseup',  onUp);
+  document.addEventListener('touchend', onUp);
+})();
+</script>
 </body>
 </html>
