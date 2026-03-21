@@ -63,13 +63,14 @@ html, body {
 }
 #menuPanel .mBtn:active { background: rgba(255,255,255,.18); }
 
-/* 主花色标签（已隐藏，信息移至info栏）& 反主倍数标签 */
-#suitTag { display: none !important; }
+/* 反主倍数标签 */
 #multTag {
   position: absolute;
   background: rgba(180,0,0,.8); color: #fff;
   padding: 3px 8px; border-radius: 5px; font-size: 11px; z-index: 100; display: none;
+  cursor: grab; user-select: none; touch-action: none;
 }
+#multTag:active { cursor: grabbing; }
 #multTag { bottom: 135px; left: 6px; }
 
 /* =====================================================
@@ -81,7 +82,6 @@ html, body {
 #pa2 {
   position: absolute; top: 0; left: 0; right: 0;
   display: flex; flex-direction: column; align-items: center;
-  padding-top: 50px;
   z-index: 50;
 }
 #h2 { display: flex; flex-direction: row; justify-content: center; }
@@ -93,8 +93,8 @@ html, body {
 
 /* 左侧 – 电脑3：手牌列(最外)→出牌+信息(靠中) */
 #pa1 {
-  position: absolute; left: 0; top: 50px; bottom: 165px;
-  display: flex; flex-direction: row; align-items: flex-end;
+  position: absolute; left: 0; top: 68px; bottom: 68px;
+  display: flex; flex-direction: row; align-items: center;
   z-index: 50;
 }
 #h1 { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
@@ -103,13 +103,13 @@ html, body {
   padding-left: 3px;
 }
 #ps1 { display: flex; flex-direction: column; align-items: center; min-width: 38px; }
-/* 左侧玩家标识：左对齐、固定在左下 */
-#pi1 { align-self: flex-start; }
+/* 左侧玩家标识：跟随父容器居中 */
+#pi1 { align-self: center; }
 
 /* 右侧 – 电脑1：出牌+信息(靠中)→手牌列(最外) */
 #pa3 {
-  position: absolute; right: 0; top: 50px; bottom: 165px;
-  display: flex; flex-direction: row; align-items: flex-end;
+  position: absolute; right: 0; top: 68px; bottom: 68px;
+  display: flex; flex-direction: row; align-items: center;
   z-index: 50;
 }
 #pa3-inner {
@@ -118,8 +118,8 @@ html, body {
 }
 #ps3 { display: flex; flex-direction: column; align-items: center; min-width: 38px; }
 #h3 { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-/* 右侧玩家标识：右对齐、固定在右下 */
-#pi3 { align-self: flex-end; }
+/* 右侧玩家标识：跟随父容器居中 */
+#pi3 { align-self: center; }
 
 /* 底部 – 玩家自己：出牌区→手牌区 */
 #pa0 {

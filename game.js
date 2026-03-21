@@ -185,6 +185,9 @@ const G = {
     S.callerPair7 = false;
     S.sellAttempt = false;
     S.sellCard    = null;
+    // 清除 #info 中的阵营显示
+    const iTeam = document.getElementById('iTeam');
+    if (iTeam) iTeam.style.display = 'none';
     S.kittyOwner      = -1;
     S.kittyPhase      = 'caller';
     S._counterCont    = null;
@@ -194,7 +197,6 @@ const G = {
     S.phase       = 'dealing';
     this.hideAllBtns();
     this.clearPlayed();
-    this._hideEl('suitTag');
     this._hideEl('multTag');
     this._hideEl('callBanner');
     // 重置底牌查看按钮
@@ -658,7 +660,6 @@ const G = {
     S.playedRound = [];
     this._determineTeams();
     this._revealCalledCard(() => {
-      this._showSuitTag();
       this.renderAll(); this.updateInfo();
       this._nextTurn();
     });
@@ -666,9 +667,12 @@ const G = {
 
   _determineTeams() {
     S.defenders = [S.caller];
-    if (!S.callerPair7 && S.trumpSuit) {
+    // 阵营判断依据：叫主牌的原始花色（calledCard 的花色），而非反主后最终的 trumpSuit。
+    // 反主只改变主花色，但守分方资格是"持有叫主牌同花色的7"，不随反主变化。
+    const calledSuit = (S.calledCard && !isJk(S.calledCard)) ? gS(S.calledCard) : S.trumpSuit;
+    if (!S.callerPair7 && calledSuit) {
       for (let i = 0; i < S.np; i++) {
-        if (i !== S.caller && S.ps[i].hand.some(c => isLv(c) && gS(c) === S.trumpSuit)) {
+        if (i !== S.caller && S.ps[i].hand.some(c => isLv(c) && gS(c) === calledSuit)) {
           S.defenders.push(i);
         }
       }
@@ -688,17 +692,6 @@ const G = {
     a.style.display = 'flex';
     this.updateInfo(); // 公开真实主花色
     setTimeout(() => { a.style.display = 'none'; if (cb) cb(); }, 3200);
-  },
-
-  _showSuitTag() {
-    const el = document.getElementById('suitTag');
-    if (S.trumpSuit) {
-      el.textContent  = `主：${SNAME[S.trumpSuit]} ${S.trumpSuit}`;
-      el.style.display = 'block';
-    } else if (S.trumpJoker) {
-      el.textContent  = '国主（无花色）';
-      el.style.display = 'block';
-    }
   },
 
   _updateMultTag() {
@@ -1053,6 +1046,17 @@ const G = {
         队友：<b>${teammate || '无（独自一队）'}</b></div>
       </div>`;
     document.getElementById('mChoice').style.display = 'flex';
+
+    // 将阵营信息同步写入 #info 游戏信息栏
+    const teamColor = playerSide === '抓分方' ? '#f90' : '#4af';
+    const teamEl    = document.getElementById('iTeam');
+    const teamVal   = document.getElementById('iTeamVal');
+    const teamMate  = document.getElementById('iTeamMate');
+    if (teamEl) {
+      teamVal.innerHTML  = `<span style="color:${teamColor}">${playerSide}</span>`;
+      teamMate.textContent = teammate || '无';
+      teamEl.style.display = '';
+    }
   },
 
   // ---------- AI出牌 ----------
@@ -1530,7 +1534,7 @@ const G = {
       el.classList.add('flyIn');
       if (existing > 0) {
         if (p === 1 || p === 3) {
-          el.style.marginTop  = `-${Math.min(existing * 8, 42)}px`;
+          el.style.marginTop  = '-42px';
         } else {
           el.style.marginLeft = `-${Math.min(existing * 10, 30)}px`;
         }

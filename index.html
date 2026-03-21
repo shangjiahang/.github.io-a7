@@ -17,6 +17,7 @@
     叫主: <b id="iDealer">-</b><br>
     主花色: <b id="iSuit">未确定</b><br>
     叫主牌: <span id="iCalledCard" style="display:none"><b id="iCalledCardVal">-</b></span><span id="iCalledCardNone" style="display:none">-</span>
+    <span id="iTeam" style="display:none"><br>阵营: <b id="iTeamVal">-</b><br>队友: <b id="iTeamMate">-</b></span>
   </div>
 
   <!-- 右上：功能菜单 -->
@@ -26,8 +27,7 @@
     <button class="mBtn" onclick="G.toggleHist()">历史记录</button>
   </div>
 
-  <!-- 主花色 & 反主倍数标签 -->
-  <div id="suitTag"></div>
+  <!-- 反主倍数标签 -->
   <div id="multTag"></div>
 
   <!-- ===== 牌堆（发牌动画起点） ===== -->
@@ -140,11 +140,11 @@
 
 <script src="game.js"></script>
 <script>
-// #info 拖拽移动
-(function () {
-  const el = document.getElementById('info');
+// 通用可拖拽元素工厂
+function makeDraggable(elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
   let ox = 0, oy = 0, sx = 0, sy = 0, dragging = false;
-
   function onDown(e) {
     dragging = true;
     const pt = e.touches ? e.touches[0] : e;
@@ -162,17 +162,19 @@
     const ny = Math.max(0, Math.min(brd.height - el.offsetHeight, oy - brd.top  + dy));
     el.style.left = nx + 'px';
     el.style.top  = ny + 'px';
+    el.style.bottom = 'auto';
     e.preventDefault();
   }
   function onUp() { dragging = false; }
-
   el.addEventListener('mousedown',  onDown, { passive: false });
   el.addEventListener('touchstart', onDown, { passive: false });
-  document.addEventListener('mousemove',  onMove, { passive: false });
-  document.addEventListener('touchmove',  onMove, { passive: false });
+  document.addEventListener('mousemove', onMove, { passive: false });
+  document.addEventListener('touchmove', onMove, { passive: false });
   document.addEventListener('mouseup',  onUp);
   document.addEventListener('touchend', onUp);
-})();
+}
+makeDraggable('info');
+makeDraggable('multTag');
 </script>
 </body>
 </html>
