@@ -885,57 +885,60 @@ const G = {
   },
 
   // 允许的副牌组合：对子、AAK、KKA、677、778、联对、联对+1单张
-  _isAllowedNonTrumpCombo(sortedRanks) {
-    const n = sortedRanks.length;
+  // 注意：ranks 必须按 RV 数值升序排列（调用前先做数值排序）
+  _isAllowedNonTrumpCombo(ranks) {
+    // 内部统一按 RV 数值升序重排，避免字典序问题
+    const sr = [...ranks].sort((a, b) => (RV[a] || 0) - (RV[b] || 0));
+    const n  = sr.length;
     if (n === 2) {
-      // 对子
-      return sortedRanks[0] === sortedRanks[1];
+      return sr[0] === sr[1];
     }
     if (n === 3) {
-      // AAK / KKA / 677 / 778
       const allowed = [['A','A','K'],['A','K','K'],['6','7','7'],['7','7','8']];
-      return allowed.some(p => p.every((r, i) => r === sortedRanks[i]));
+      // 允许列表也是按数值升序排列的
+      return allowed.some(p => p.every((r, i) => r === sr[i]));
     }
     if (n >= 4 && n % 2 === 0) {
-      // 联对：检查是否为连续对子（AABB...）
-      return this._isConsecPairs(sortedRanks);
+      return this._isConsecPairs(sr);
     }
     if (n >= 5 && n % 2 !== 0) {
-      // 联对+1单张
-      return this._isChainWithKicker(sortedRanks);
+      return this._isChainWithKicker(sr);
     }
     return false;
   },
 
+  // 检查 ranks（已按 RV 数值升序）是否为连续对子（AABB CC...）
   _isConsecPairs(sortedRanks) {
-    if (sortedRanks.length % 2 !== 0) return false;
-    for (let i = 0; i < sortedRanks.length; i += 2) {
-      if (sortedRanks[i] !== sortedRanks[i + 1]) return false;
+    // 确保内部也是数值升序（外部可能传字典序，防御性重排）
+    const sr = [...sortedRanks].sort((a, b) => (RV[a] || 0) - (RV[b] || 0));
+    if (sr.length % 2 !== 0) return false;
+    for (let i = 0; i < sr.length; i += 2) {
+      if (sr[i] !== sr[i + 1]) return false;
     }
-    // 还需检查各对相邻（点数连续）
+    // 检查各对点数连续（升序差值为1）
     const vals = [];
-    for (let i = 0; i < sortedRanks.length; i += 2) vals.push(RV[sortedRanks[i]] || 0);
+    for (let i = 0; i < sr.length; i += 2) vals.push(RV[sr[i]] || 0);
     for (let i = 1; i < vals.length; i++) {
-      if (vals[i] - vals[i-1] !== 1) return false;
+      if (vals[i] - vals[i - 1] !== 1) return false;
     }
     return true;
   },
 
-  // 判断 sortedRanks 是否为"联对+1单张"结构
+  // 判断 ranks（已按 RV 数值升序）是否为"联对+1单张"结构
   // 单张必须与联对的最低对或最高对点数相邻（差1）
   _isChainWithKicker(sortedRanks) {
-    const n = sortedRanks.length;
-    if (n < 5 || n % 2 === 0) return false; // 奇数且至少5张（2对+1）
-    // 逐一尝试去掉每个位置的牌，看剩余是否构成联对
+    // 防御性重排为数值升序
+    const sr = [...sortedRanks].sort((a, b) => (RV[a] || 0) - (RV[b] || 0));
+    const n  = sr.length;
+    if (n < 5 || n % 2 === 0) return false;
     for (let skip = 0; skip < n; skip++) {
-      const rest = sortedRanks.filter((_, i) => i !== skip);
+      const rest = sr.filter((_, i) => i !== skip);
       if (!this._isConsecPairs(rest)) continue;
-      // 验证单张与联对首尾相邻
-      const kicker = sortedRanks[skip];
-      const kv = RV[kicker] || 0;
-      // 联对最低点（rest[0]）和最高点（rest[rest.length-1]）
-      const chainMin = RV[rest[0]] || 0;
-      const chainMax = RV[rest[rest.length - 1]] || 0;
+      const kv       = RV[sr[skip]] || 0;
+      // rest 已经过 _isConsecPairs 内部排序，取最小/最大点值
+      const restVals = rest.filter((_, i) => i % 2 === 0).map(r => RV[r] || 0);
+      const chainMin = Math.min(...restVals);
+      const chainMax = Math.max(...restVals);
       if (kv === chainMin - 1 || kv === chainMax + 1) return true;
     }
     return false;
