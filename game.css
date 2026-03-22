@@ -25,13 +25,15 @@ html, body {
    顶部固定元素
    ===================================================== */
 
-/* 游戏信息栏（左上） */
+/* 游戏信息栏（可拖拽，默认左上角） */
 #info {
   position: absolute; top: 6px; left: 6px;
   background: rgba(0,0,0,.68); color: #c8f0c8;
   padding: 5px 9px; border-radius: 8px;
   font-size: 11px; line-height: 1.8; z-index: 100;
+  cursor: grab; user-select: none; touch-action: none;
 }
+#info:active { cursor: grabbing; }
 #info b { color: #7fff7f; }
 
 /* 功能菜单按钮（右上） */
@@ -61,14 +63,15 @@ html, body {
 }
 #menuPanel .mBtn:active { background: rgba(255,255,255,.18); }
 
-/* 主花色 & 反主倍数标签 */
-#suitTag, #multTag {
+/* 反主倍数标签 */
+#multTag {
   position: absolute;
-  background: rgba(0,0,0,.65); color: #ffe;
+  background: rgba(180,0,0,.8); color: #fff;
   padding: 3px 8px; border-radius: 5px; font-size: 11px; z-index: 100; display: none;
+  cursor: grab; user-select: none; touch-action: none;
 }
-#suitTag { bottom: 135px; right: 6px; }
-#multTag { bottom: 135px; left: 6px; background: rgba(180,0,0,.8); color: #fff; }
+#multTag:active { cursor: grabbing; }
+#multTag { bottom: 135px; left: 6px; }
 
 /* =====================================================
    玩家区域布局
@@ -79,7 +82,6 @@ html, body {
 #pa2 {
   position: absolute; top: 0; left: 0; right: 0;
   display: flex; flex-direction: column; align-items: center;
-  padding-top: 50px;
   z-index: 50;
 }
 #h2 { display: flex; flex-direction: row; justify-content: center; }
@@ -91,8 +93,8 @@ html, body {
 
 /* 左侧 – 电脑3：手牌列(最外)→出牌+信息(靠中) */
 #pa1 {
-  position: absolute; left: 0; top: 50px; bottom: 165px;
-  display: flex; flex-direction: row; align-items: flex-end;
+  position: absolute; left: 0; top: 68px; bottom: 68px;
+  display: flex; flex-direction: row; align-items: center;
   z-index: 50;
 }
 #h1 { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
@@ -101,13 +103,13 @@ html, body {
   padding-left: 3px;
 }
 #ps1 { display: flex; flex-direction: column; align-items: center; min-width: 38px; }
-/* 左侧玩家标识：左对齐、固定在左下 */
-#pi1 { align-self: flex-start; }
+/* 左侧玩家标识：跟随父容器居中 */
+#pi1 { align-self: center; }
 
 /* 右侧 – 电脑1：出牌+信息(靠中)→手牌列(最外) */
 #pa3 {
-  position: absolute; right: 0; top: 50px; bottom: 165px;
-  display: flex; flex-direction: row; align-items: flex-end;
+  position: absolute; right: 0; top: 68px; bottom: 68px;
+  display: flex; flex-direction: row; align-items: center;
   z-index: 50;
 }
 #pa3-inner {
@@ -116,8 +118,8 @@ html, body {
 }
 #ps3 { display: flex; flex-direction: column; align-items: center; min-width: 38px; }
 #h3 { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-/* 右侧玩家标识：右对齐、固定在右下 */
-#pi3 { align-self: flex-end; }
+/* 右侧玩家标识：跟随父容器居中 */
+#pi3 { align-self: center; }
 
 /* 底部 – 玩家自己：出牌区→手牌区 */
 #pa0 {
@@ -130,6 +132,11 @@ html, body {
   min-height: 52px; padding: 2px 4px;
 }
 #h0 { display: flex; flex-direction: row; justify-content: center; padding-bottom: 4px; }
+/* 玩家自己的得分标签：底部手牌区左下角 */
+#pi0 {
+  position: absolute; bottom: 4px; left: 6px;
+  z-index: 60;
+}
 
 /* 玩家信息标签 */
 .pInfo {
@@ -137,8 +144,13 @@ html, body {
   padding: 3px 8px; border-radius: 5px;
   font-size: 11px; text-align: center; line-height: 1.5; white-space: nowrap;
 }
-.pInfo.active { background: rgba(255,200,0,.88); color: #222; }
+.pInfo.active  { background: rgba(255,200,0,.88); color: #222; }
 .pInfo.dealer::after { content: ' ★'; color: #ffe066; }
+.pInfo.leader  { background: rgba(80,200,120,.92); color: #fff; box-shadow: 0 0 8px 2px rgba(80,255,140,.7); }
+.pInfo.leader::before { content: '先手 '; font-size: 10px; opacity: .85; }
+
+/* 出牌区首出高亮边框 */
+.pSlot.leader  { border-radius: 8px; box-shadow: 0 0 0 2.5px #50c878, 0 0 12px 3px rgba(80,255,140,.45); }
 
 /* =====================================================
    牌（Card）
