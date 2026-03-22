@@ -744,8 +744,10 @@ const G = {
   humanPass() {
     const n   = S.leadCards.length;
     const sel = this._getSel();
-    // 若当前已有正确数量的选中牌，直接出牌（第二次点击）
+    // 若当前已有正确数量的选中牌，验证后出牌（第二次点击）
     if (sel.length === n) {
+      const err = this._validatePlay(0, sel);
+      if (err) { this._showMsg(err, 1800); return; }
       this._playCards(0, sel);
       return;
     }
@@ -1355,10 +1357,29 @@ const G = {
       <div class="sRes ${cls}">${txt}</div>
     `;
     document.getElementById('mSettle').style.display = 'flex';
+    // 每局结算时，为每个玩家生成胜负/得分/筹码记录
+    const chipUnit  = chips.includes('+') ? parseInt(chips.match(/\d+/)?.[0] || '0') : 0;
+    const atkWin    = sc >= 80;   // 抓分方是否获胜
+    const playerRec = S.ps.map((pl, i) => {
+      const isAtk  = S.attackers.includes(i);
+      const isCall = i === S.caller;
+      const win    = isAtk ? atkWin : !atkWin;
+      const pChips = isAtk
+        ? (atkWin  ? `+${chipUnit}` : `-${chipUnit}`)
+        : (!atkWin ? `+${chipUnit}` : `-${chipUnit}`);
+      return {
+        name:   pl.name,
+        team:   isCall ? '守（叫主）' : isAtk ? '抓分方' : '守分方',
+        score:  S.playerScores[i] || 0,
+        win,
+        chips:  chipUnit === 0 ? (win ? '平' : '-') : pChips,
+      };
+    });
     S.history.push({
       gameRound: S.gameRound, atkN, defN, sc, multiplier: S.multiplier, txt, chips,
       trumpSuit: S.trumpSuit ? SNAME[S.trumpSuit] : '国主',
       caller: S.ps[S.caller]?.name || '-',
+      playerRec,
     });
   },
 
@@ -1413,8 +1434,11 @@ const G = {
     if (p === 0) {
       // 玩家自己：出牌阶段显示得分标签
       if (info) {
-        const isCaller = S.caller === 0;
-        if ((S.phase === 'playing' || S.phase === 'settle') && !isCaller) {
+        const isCaller0    = S.caller === 0;
+        // 阵营公开前：所有非叫主玩家均显示得分（防止通过是否显示得分暴露阵营）
+        // 阵营公开后：只有攻击方显示得分
+        const showScore0 = !isCaller0 && (S.teamRevealed ? S.attackers.includes(0) : true);
+        if ((S.phase === 'playing' || S.phase === 'settle') && showScore0) {
           const sc = S.playerScores[0] || 0;
           info.innerHTML = `你<br>得分: ${sc}`;
           info.className = 'pInfo';
@@ -1492,8 +1516,10 @@ const G = {
     } else {
       // AI玩家
       if (info) {
-        const isCaller = S.caller === p;
-        const sc = (!isCaller && (S.phase === 'playing' || S.phase === 'settle')) ? (S.playerScores[p] || 0) : null;
+        const isCaller  = S.caller === p;
+        // 阵营公开前：所有非叫主玩家均显示得分；阵营公开后：只有攻击方显示得分
+        const showScore = !isCaller && (S.teamRevealed ? S.attackers.includes(p) : true);
+        const sc = (showScore && (S.phase === 'playing' || S.phase === 'settle')) ? (S.playerScores[p] || 0) : null;
         const scoreLine = sc !== null ? `<br>得分: ${sc}` : '';
         info.innerHTML  = `${S.ps[p].name}<br>剩余: ${h.length}${scoreLine}`;
         info.className  = 'pInfo';
@@ -1529,17 +1555,36 @@ const G = {
   renderPlayed(p, cards) {
     const sl = document.getElementById(`ps${p}`);
     for (const c of cards) {
-      const el       = mkCard(c, { med: true });
-      const existing = sl.children.length;
+      const el = mkCard(c, { med: true });
       el.classList.add('flyIn');
-      if (existing > 0) {
-        if (p === 1 || p === 3) {
-          el.style.marginTop  = '-42px';
-        } else {
-          el.style.marginLeft = `-${Math.min(existing * 10, 30)}px`;
-        }
-      }
       sl.appendChild(el);
+    }
+    // 追加完成后，重新布局：最新6张正常间距（不叠加），更早的牌压缩叠加
+    const children = Array.from(sl.children);
+    const total    = children.length;
+    const RECENT   = 6; // 最新展示张数
+    if (p === 1 || p === 3) {
+      // 竖向：早期牌 -42px，最新6张 -30px
+      children.forEach((el, i) => {
+        if (i === 0) {
+          el.style.marginTop = '0';
+        } else if (i >= total - RECENT) {
+          el.style.marginTop = '-30px';
+        } else {
+          el.style.marginTop = '-42px';
+        }
+      });
+    } else {
+      // 横向：早期牌 -30px，最新6张 margin-left=0
+      children.forEach((el, i) => {
+        if (i === 0) {
+          el.style.marginLeft = '0';
+        } else if (i >= total - RECENT) {
+          el.style.marginLeft = '0';
+        } else {
+          el.style.marginLeft = '-30px';
+        }
+      });
     }
   },
 
@@ -1656,12 +1701,46 @@ const G = {
     for (const h of S.history) {
       const item = document.createElement('div');
       item.className = 'hItem';
-      item.innerHTML = `<b>第${h.gameRound}局</b> | ${h.txt} | 叫主: ${h.caller} | 主: ${h.trumpSuit}`;
-      const det = document.createElement('div');
-      det.className = 'hDetail';
-      det.innerHTML = `抓分方: ${h.atkN} | 防守方: ${h.defN} | 得分: ${h.sc} | 筹码: ${h.chips} | 反主: ×${h.multiplier}`;
-      item.onclick = () => det.style.display = det.style.display === 'block' ? 'none' : 'block';
-      item.appendChild(det);
+
+      // 标题行
+      const title = document.createElement('div');
+      title.style.cssText = 'font-weight:700;margin-bottom:4px;';
+      title.innerHTML = `第${h.gameRound}局 | ${h.txt} | 叫主: ${h.caller} | 主: ${h.trumpSuit} | 反主: ×${h.multiplier}`;
+      item.appendChild(title);
+
+      // 汇总行
+      const summary = document.createElement('div');
+      summary.style.cssText = 'color:#adf;margin-bottom:4px;font-size:11px;';
+      summary.textContent = `抓分方: ${h.atkN}　防守方: ${h.defN}　总分: ${h.sc}　${h.chips}`;
+      item.appendChild(summary);
+
+      // 玩家明细表格（默认展示）
+      if (h.playerRec && h.playerRec.length) {
+        const table = document.createElement('table');
+        table.style.cssText = 'width:100%;border-collapse:collapse;font-size:11px;';
+        // 表头
+        const thead = document.createElement('tr');
+        thead.style.color = '#7ff';
+        thead.innerHTML = '<td style="padding:2px 4px;">玩家</td>'
+          + '<td style="padding:2px 4px;">阵营</td>'
+          + '<td style="padding:2px 4px;">得分</td>'
+          + '<td style="padding:2px 4px;">胜负</td>'
+          + '<td style="padding:2px 4px;">筹码</td>';
+        table.appendChild(thead);
+        // 每玩家一行
+        for (const r of h.playerRec) {
+          const tr = document.createElement('tr');
+          tr.style.color = r.win ? '#7ffe7f' : '#ff8888';
+          tr.innerHTML = `<td style="padding:2px 4px;">${r.name}</td>`
+            + `<td style="padding:2px 4px;">${r.team}</td>`
+            + `<td style="padding:2px 4px;">${r.score}</td>`
+            + `<td style="padding:2px 4px;">${r.win ? '胜' : '负'}</td>`
+            + `<td style="padding:2px 4px;">${r.chips}</td>`;
+          table.appendChild(tr);
+        }
+        item.appendChild(table);
+      }
+
       list.appendChild(item);
     }
     const show = panel.style.display !== 'flex';
