@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>é»„æ¢…æš—7 â€” é€‰æ‹©æˆ¿é—´</title>
+<title>»ÆÃ·°µ7 ¡ª Ñ¡Ôñ·¿¼ä</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -25,12 +25,12 @@ body {
   justify-content: center;
   overflow-x: hidden;
   overflow-y: auto;
-  /* å®‰å…¨åŒºé€‚é… */
+  /* °²È«ÇøÊÊÅä */
   padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
            env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
 }
 
-/* èƒŒæ™¯å…‰æ™• */
+/* ±³¾°¹âÔÎ */
 .bg-deco {
   position: fixed;
   inset: 0;
@@ -57,7 +57,7 @@ body {
   bottom: -12vw; right: -12vw;
 }
 
-/* æµ®åŠ¨ç‰Œ */
+/* ¸¡¶¯ÅÆ */
 .float-cards {
   position: fixed;
   inset: 0;
@@ -88,7 +88,7 @@ body {
   100% { transform: translateY(-10vh) rotate(18deg); opacity: .04; }
 }
 
-/* ===== ä¸»ä½“å®¹å™¨ ===== */
+/* ===== Ö÷ÌåÈİÆ÷ ===== */
 .lobby {
   position: relative;
   z-index: 1;
@@ -97,13 +97,13 @@ body {
   align-items: center;
   width: 100%;
   max-width: 520px;
-  /* ä¸Šä¸‹ç•™å‡ºå®‰å…¨ä½™é‡ï¼Œæ‰‹æœºç«–å±æ—¶å†…å®¹èƒ½å®Œæ•´æ˜¾ç¤º */
+  /* ÉÏÏÂÁô³ö°²È«ÓàÁ¿£¬ÊÖ»úÊúÆÁÊ±ÄÚÈİÄÜÍêÕûÏÔÊ¾ */
   padding: clamp(20px, 6vh, 48px) clamp(14px, 5vw, 28px) clamp(20px, 5vh, 40px);
   min-height: 100dvh;
   justify-content: center;
 }
 
-/* ===== æ ‡é¢˜ ===== */
+/* ===== ±êÌâ ===== */
 .title-wrap {
   text-align: center;
   margin-bottom: clamp(20px, 5vh, 40px);
@@ -131,7 +131,7 @@ body {
   background: rgba(255,255,255,.04);
 }
 
-/* ===== æˆ¿é—´åˆ—è¡¨ ===== */
+/* ===== ·¿¼äÁĞ±í ===== */
 .rooms {
   display: flex;
   flex-direction: column;
@@ -139,7 +139,7 @@ body {
   width: 100%;
 }
 
-/* ===== æˆ¿é—´å¡ç‰‡ ===== */
+/* ===== ·¿¼ä¿¨Æ¬ ===== */
 .room-card {
   position: relative;
   border-radius: clamp(14px, 4vw, 20px);
@@ -153,41 +153,41 @@ body {
   display: flex;
   align-items: center;
   gap: clamp(12px, 3.5vw, 20px);
-  /* æ‰‹æœºç«¯æœ€å°ç‚¹å‡»é«˜åº¦ */
+  /* ÊÖ»ú¶Ë×îĞ¡µã»÷¸ß¶È */
   min-height: 80px;
-  /* é˜²æ­¢ç‚¹å‡»æ—¶æ–‡å­—è¢«é€‰ä¸­ */
+  /* ·ÀÖ¹µã»÷Ê±ÎÄ×Ö±»Ñ¡ÖĞ */
   touch-action: manipulation;
 }
 .room-card:active {
   transform: scale(.96);
   transition-duration: .08s;
 }
-/* ç§»é™¤ hoverï¼ˆæ‰‹æœºç«¯ hover ä¼šç²˜æ»ï¼‰ */
+/* ÒÆ³ı hover£¨ÊÖ»ú¶Ë hover »áÕ³ÖÍ£© */
 @media (hover: hover) {
   .room-card:hover { transform: translateY(-2px); }
   .room-card:hover .room-arrow { opacity: .8; transform: translateX(4px); }
 }
 
-/* é«˜çº§æˆ¿ */
+/* ¸ß¼¶·¿ */
 .room-adv {
   background: linear-gradient(135deg, #1a1a3e 0%, #2d1b5e 55%, #1e2858 100%);
   border-color: rgba(180,100,255,.4);
   box-shadow: 0 4px 20px rgba(130,70,255,.22), inset 0 1px 0 rgba(255,255,255,.07);
 }
-/* ä¸­çº§æˆ¿ */
+/* ÖĞ¼¶·¿ */
 .room-mid {
   background: linear-gradient(135deg, #142814 0%, #1b4828 55%, #1a3018 100%);
   border-color: rgba(70,200,110,.38);
   box-shadow: 0 4px 20px rgba(50,170,90,.18), inset 0 1px 0 rgba(255,255,255,.06);
 }
-/* åˆçº§æˆ¿ */
+/* ³õ¼¶·¿ */
 .room-bas {
   background: linear-gradient(135deg, #281a0e 0%, #3c2210 55%, #281e0e 100%);
   border-color: rgba(230,160,50,.38);
   box-shadow: 0 4px 20px rgba(195,135,35,.18), inset 0 1px 0 rgba(255,255,255,.06);
 }
 
-/* å›¾æ ‡ */
+/* Í¼±ê */
 .room-icon {
   width: clamp(44px, 12vw, 58px);
   height: clamp(44px, 12vw, 58px);
@@ -202,7 +202,7 @@ body {
 .room-mid .room-icon { background: rgba(50,190,90,.14);  border: 1px solid rgba(50,190,90,.25); }
 .room-bas .room-icon { background: rgba(215,155,45,.14); border: 1px solid rgba(215,155,45,.25); }
 
-/* æ–‡å­—åŒº */
+/* ÎÄ×ÖÇø */
 .room-info { flex: 1; min-width: 0; }
 .room-name {
   font-size: clamp(16px, 4.5vw, 21px);
@@ -219,7 +219,7 @@ body {
   font-size: clamp(11px, 3vw, 12.5px);
   color: rgba(255,255,255,.48);
   line-height: 1.55;
-  /* æ‰‹æœºç«–å±è¾ƒçª„æ—¶å…è®¸æ–‡å­—æ¢è¡Œ */
+  /* ÊÖ»úÊúÆÁ½ÏÕ­Ê±ÔÊĞíÎÄ×Ö»»ĞĞ */
   word-break: break-all;
   overflow-wrap: break-word;
 }
@@ -236,7 +236,7 @@ body {
 .room-mid .room-label { background: rgba(50,190,90,.14);  color: #86efac; border: 1px solid rgba(50,190,90,.25); }
 .room-bas .room-label { background: rgba(215,155,45,.14); color: #fde68a; border: 1px solid rgba(215,155,45,.25); }
 
-/* ç®­å¤´ */
+/* ¼ıÍ· */
 .room-arrow {
   font-size: clamp(16px, 4vw, 20px);
   opacity: .35;
@@ -244,7 +244,7 @@ body {
   transition: opacity .15s, transform .15s;
 }
 
-/* ===== åº•éƒ¨è¯´æ˜ ===== */
+/* ===== µ×²¿ËµÃ÷ ===== */
 .footer-note {
   margin-top: clamp(16px, 4vh, 28px);
   font-size: clamp(10px, 2.8vw, 12px);
@@ -253,7 +253,7 @@ body {
   line-height: 1.9;
 }
 
-/* ===== å…¥åœºåŠ¨ç”» ===== */
+/* ===== Èë³¡¶¯»­ ===== */
 .title-wrap { animation: fadeSlideDown .5s ease both; }
 @keyframes fadeSlideDown {
   from { opacity: 0; transform: translateY(-16px); }
@@ -268,7 +268,7 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ===== æ¨ªå±æ‰‹æœºé€‚é… ===== */
+/* ===== ºáÆÁÊÖ»úÊÊÅä ===== */
 @media (max-height: 480px) and (orientation: landscape) {
   .lobby { min-height: auto; padding: 12px 16px 12px; justify-content: flex-start; }
   .title-wrap { margin-bottom: 12px; }
@@ -293,8 +293,8 @@ body {
 <div class="lobby">
 
   <div class="title-wrap">
-    <div class="title-main">é»„æ¢…æš—7</div>
-    <div class="title-badge">é€‰æ‹©å¯¹å±€æˆ¿é—´</div>
+    <div class="title-main">»ÆÃ·°µ7</div>
+    <div class="title-badge">Ñ¡Ôñ¶Ô¾Ö·¿¼ä</div>
   </div>
 
   <div class="rooms">
@@ -302,9 +302,9 @@ body {
     <div class="room-card room-adv" onclick="enterRoom('advanced')">
       <div class="room-icon">?</div>
       <div class="room-info">
-        <div class="room-name">é«˜çº§æˆ¿</div>
-        <div class="room-desc">ä¸æ¨èæ–°æ‰‹ç©å®¶ï¼Œå®¹æ˜“æ‰“å‡»è‡ªä¿¡å¿ƒ</div>
-        <div class="room-label">å…¨çŸ¥è§†è§’ Â· é«˜éš¾åº¦</div>
+        <div class="room-name">¸ß¼¶·¿</div>
+        <div class="room-desc">²»ÍÆ¼öĞÂÊÖÍæ¼Ò£¬ÈİÒ×´ò»÷×ÔĞÅĞÄ</div>
+        <div class="room-label">È«ÖªÊÓ½Ç ¡¤ ¸ßÄÑ¶È</div>
       </div>
       <div class="room-arrow">?</div>
     </div>
@@ -312,9 +312,9 @@ body {
     <div class="room-card room-mid" onclick="enterRoom('medium')">
       <div class="room-icon">?</div>
       <div class="room-info">
-        <div class="room-name">ä¸­çº§æˆ¿</div>
-        <div class="room-desc">è€é¸Ÿæ¥æˆ˜ï¼ï¼ï¼</div>
-        <div class="room-label">ç­–ç•¥æ¨ç† Â· ä¸­ç­‰éš¾åº¦</div>
+        <div class="room-name">ÖĞ¼¶·¿</div>
+        <div class="room-desc">ÀÏÄñÀ´Õ½£¡£¡£¡</div>
+        <div class="room-label">²ßÂÔÍÆÀí ¡¤ ÖĞµÈÄÑ¶È</div>
       </div>
       <div class="room-arrow">?</div>
     </div>
@@ -322,9 +322,9 @@ body {
     <div class="room-card room-bas" onclick="enterRoom('basic')">
       <div class="room-icon">?</div>
       <div class="room-info">
-        <div class="room-name">åˆçº§æˆ¿</div>
-        <div class="room-desc">é€‚åˆæ–°æ‰‹ç†Ÿæ‚‰è§„åˆ™</div>
-        <div class="room-label">åŸºç¡€æ¨¡å¼ Â· å…¥é—¨éš¾åº¦</div>
+        <div class="room-name">³õ¼¶·¿</div>
+        <div class="room-desc">ÊÊºÏĞÂÊÖÊìÏ¤¹æÔò</div>
+        <div class="room-label">»ù´¡Ä£Ê½ ¡¤ ÈëÃÅÄÑ¶È</div>
       </div>
       <div class="room-arrow">?</div>
     </div>
@@ -332,8 +332,8 @@ body {
   </div>
 
   <div class="footer-note">
-    ç‚¹å‡»æˆ¿é—´å³å¯è¿›å…¥æ¸¸æˆ Â· å•æœºå¯¹æˆ˜ 4 äººæ¡Œ<br>
-    æ¸¸æˆè§„åˆ™è¯¦è§é»„æ¢…æš—7è§„åˆ™æ–‡æ¡£
+    µã»÷·¿¼ä¼´¿É½øÈëÓÎÏ· ¡¤ µ¥»ú¶ÔÕ½ 4 ÈË×À<br>
+    ÓÎÏ·¹æÔòÏê¼û»ÆÃ·°µ7¹æÔòÎÄµµ
   </div>
 
 </div>

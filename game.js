@@ -1499,9 +1499,10 @@ const G = {
     const isAtk = S.attackers.includes(lastWinner);
     let ks = 0;
     if (isAtk) {
-      const n      = lastWinCards.length;
-      const factor = n === 1 ? 2 : n === 2 ? 4 : n === 3 ? 6 : 8;
-      for (const c of S.kitty) ks += cardScore(c) * factor;
+      const n          = lastWinCards.length;
+      const factor     = n === 1 ? 2 : n === 2 ? 4 : n === 3 ? 6 : 8;
+      const multiplier = S.multiplier || 1;
+      for (const c of S.kitty) ks += cardScore(c) * factor * multiplier;
       S.atkScore += ks;
     }
     const msg = isAtk ? `扣底 +${ks} 分` : '防守方赢得最后一轮，无扣底';
@@ -1530,12 +1531,12 @@ const G = {
       txt   = playerIsAtk ? `抓分不足（${sc}分），你们输了！` : `防守成功（${sc}分），你们赢了！`;
       cls   = playerIsAtk ? 'rLose' : 'rWin';
     } else {
-      baseUnit = Math.floor((sc - 80) / 40) + 1;
+      baseUnit = Math.floor((sc - 80) / 20) + 1;
       txt   = playerIsAtk ? `抓分方胜！（${sc}分）` : `防守失败（${sc}分），你们输了！`;
       cls   = playerIsAtk ? 'rWin' : 'rLose';
     }
-    // 含反主倍数的实际每败方出筹数
-    const chipUnit = baseUnit * (S.multiplier || 1);
+    // 筹数即 baseUnit（反主倍数已体现在扣底分中，无需再乘）
+    const chipUnit = baseUnit;
     // 胜败方人数
     const atkWin   = sc >= 80;
     const winSide  = atkWin ? S.attackers : S.defenders;
