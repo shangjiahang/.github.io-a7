@@ -85,16 +85,26 @@ const RobotAI = {
   _basicFollow(p, h, n) {
     const lg   = suitGroup(S.leadCards[0]);
     const same = h.filter(c => suitGroup(c) === lg);
-    const res  = [];
-    if (same.length >= n) {
-      same.sort((a, b) => cardVal(a) - cardVal(b));
-      return same.slice(0, n);
+
+    if (same.length === 0) {
+      const rem = [...h].sort((a, b) => cardScore(a) - cardScore(b));
+      return rem.slice(0, n);
     }
-    res.push(...same);
-    const rem = h.filter(c => suitGroup(c) !== lg);
-    rem.sort((a, b) => cardScore(a) - cardScore(b));
-    res.push(...rem.slice(0, n - res.length));
-    return res.slice(0, n);
+
+    // 借用 G 的牌型约束选牌
+    const { must, canFill } = G._mustFollowCards(h, n);
+    const result = [...must];
+    if (result.length < n) {
+      const used = new Set(result);
+      result.push(...canFill.filter(c => !used.has(c)).slice(0, n - result.length));
+    }
+    if (result.length < n) {
+      const used = new Set(result);
+      const rem  = h.filter(c => !used.has(c) && suitGroup(c) !== lg)
+                    .sort((a, b) => cardScore(a) - cardScore(b));
+      result.push(...rem.slice(0, n - result.length));
+    }
+    return result.slice(0, n);
   },
 
   /* --------------------------------------------------
@@ -164,41 +174,52 @@ const RobotAI = {
     const roundScore = S.playedRound.reduce((s, e) => s + _sumScore(e.cards), 0);
     const hasRoundScore = roundScore > 0;
 
-    // 必须先跟同花色
-    const mustN = Math.min(same.length, n);
+    // 必须先跟同花色（含牌型约束）
+    const { must: mustCards, canFill: fillCards } = G._mustFollowCards(h, n);
+    const mustN      = Math.min(same.length, n);
+    // 同花色全部候选（用于策略选牌）
     const sameSorted = [...same].sort((a, b) => cardVal(a) - cardVal(b));
+
+    // 辅助：从候选中选 n 张，must 牌优先，再从 fillCards 中按策略补足
+    const pickSame = (candidates, count) => {
+      // 确保 must 一定包含，再从 candidates 里补不在 must 里的部分
+      const res = [...mustCards];
+      const usedSet = new Set(mustCards);
+      const extra = candidates.filter(c => !usedSet.has(c));
+      res.push(...extra);
+      return res.slice(0, count);
+    };
 
     if (same.length >= n) {
       if (isAtk) {
         if (curBestIsAlly) {
-          // 盟友领先：出最小同花色，节省大牌
-          return sameSorted.slice(0, n);
+          return pickSame(sameSorted, n);
         }
-        // 尝试压制：选能赢当前最强的最小牌
         const winning = same.filter(c => cardVal(c) > _maxVal(curBest.cards));
         if (winning.length >= n) {
           winning.sort((a, b) => cardVal(a) - cardVal(b));
-          return winning.slice(0, n);
+          return pickSame(winning, n);
         }
-        // 压不住：出最小的（节省大牌）
-        return sameSorted.slice(0, n);
+        return pickSame(sameSorted, n);
       } else {
-        // 守分方：盟友在赢则出小牌；否则尝试压制阻止抓分
         if (curBestIsAlly) {
-          return sameSorted.slice(0, n);
+          return pickSame(sameSorted, n);
         }
         const winning = same.filter(c => cardVal(c) > _maxVal(curBest.cards));
         if (winning.length >= n) {
           winning.sort((a, b) => cardVal(a) - cardVal(b));
-          return winning.slice(0, n);
+          return pickSame(winning, n);
         }
-        return sameSorted.slice(0, n);
+        return pickSame(sameSorted, n);
       }
     }
 
-    // 跟牌不足：先出同花色，再从 other 选垫牌
-    const forced = sameSorted.slice(0, mustN);
-    const needExtra = n - mustN;
+    // 跟牌不足：先出 must + fillCards，再从 other 选垫牌
+    const forced    = [...mustCards];
+    const usedForced = new Set(forced);
+    forced.push(...fillCards.filter(c => !usedForced.has(c)));
+    const forcedFinal = forced.slice(0, mustN);
+    const needExtra = n - forcedFinal.length;
 
     let extras;
     if (isAtk) {
@@ -220,7 +241,7 @@ const RobotAI = {
       extras = [...noScore, ...hasScoreCards].slice(0, needExtra);
     }
 
-    return [...forced, ...extras].slice(0, n);
+    return [...forcedFinal, ...extras].slice(0, n);
   },
 
   /* --------------------------------------------------
@@ -331,64 +352,68 @@ const RobotAI = {
       return false;
     };
 
+    const { must: mustCards2, canFill: fillCards2 } = G._mustFollowCards(h, n);
     const mustN      = Math.min(same.length, n);
     const sameSorted = [...same].sort((a, b) => cardVal(a) - cardVal(b));
+
+    // 辅助：选 n 张同花色，must 牌优先，余量从候选中补
+    const pickSame = (candidates, count) => {
+      const res = [...mustCards2];
+      const used = new Set(mustCards2);
+      res.push(...candidates.filter(c => !used.has(c)));
+      return res.slice(0, count);
+    };
 
     if (same.length >= n) {
       if (isAtk) {
         if (curBestIsAlly && remaining === 0) {
-          // 盟友已是最强且是最后一轮，出最小同花色
-          return sameSorted.slice(0, n);
+          return pickSame(sameSorted, n);
         }
         if (curBestIsAlly) {
-          // 盟友领先，节省大牌（出最小）
-          return sameSorted.slice(0, n);
+          return pickSame(sameSorted, n);
         }
-        // 尝试用最小的能赢牌压制
         const myBeat = same
           .filter(c => !canOpponentBeat(c) || remaining === 0)
           .filter(c => cardVal(c) > _maxVal(curBest.cards))
           .sort((a, b) => cardVal(a) - cardVal(b));
-        if (myBeat.length >= n) return myBeat.slice(0, n);
+        if (myBeat.length >= n) return pickSame(myBeat, n);
 
-        // 赢不了也保不了分：如果本轮有分牌且对手在赢，出大牌尝试压
         if (hasRoundScore) {
-          const bigCards = same.sort((a, b) => cardVal(b) - cardVal(a));
-          return bigCards.slice(0, n);
+          const bigCards = [...same].sort((a, b) => cardVal(b) - cardVal(a));
+          return pickSame(bigCards, n);
         }
-        return sameSorted.slice(0, n);
+        return pickSame(sameSorted, n);
 
       } else {
         // 守分方
         if (curBestIsAlly && remaining === 0) {
-          // 盟友最后赢，垫分贡献
           if (hasRoundScore && same.some(c => cardScore(c) > 0)) {
             const scoreCards = same.filter(c => cardScore(c) > 0).sort((a, b) => cardScore(b) - cardScore(a));
             const noScore    = same.filter(c => cardScore(c) === 0).sort((a, b) => cardVal(a) - cardVal(b));
-            return [...scoreCards, ...noScore].slice(0, n);
+            return pickSame([...scoreCards, ...noScore], n);
           }
-          return sameSorted.slice(0, n);
+          return pickSame(sameSorted, n);
         }
         if (curBestIsAlly) {
-          // 盟友领先：出小牌
-          return sameSorted.slice(0, n);
+          return pickSame(sameSorted, n);
         }
-        // 对手在赢：尝试压制（如果本轮有分）
         if (hasRoundScore) {
           const winning = same.filter(c => cardVal(c) > _maxVal(curBest.cards));
           if (winning.length >= n) {
             winning.sort((a, b) => cardVal(a) - cardVal(b));
-            return winning.slice(0, n);
+            return pickSame(winning, n);
           }
         }
-        // 压不住：出小牌，减少损失
-        return sameSorted.slice(0, n);
+        return pickSame(sameSorted, n);
       }
     }
 
-    // 跟牌不足：先出同花色，再选垫牌
-    const forced = sameSorted.slice(0, mustN);
-    const needExtra = n - mustN;
+    // 跟牌不足：先出 must + fillCards，再选垫牌
+    const forcedBase = [...mustCards2];
+    const usedForced = new Set(forcedBase);
+    forcedBase.push(...fillCards2.filter(c => !usedForced.has(c)));
+    const forced    = forcedBase.slice(0, mustN);
+    const needExtra = n - forced.length;
     let extras;
 
     const allyWinning = curBestIsAlly;

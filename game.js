@@ -552,10 +552,10 @@ const G = {
       const startP = this.prev(S.caller);
       this._counterTurn(startP, S.caller, () => this._startPlaying());
     } else {
-      // 反主玩家换底完成 → 继续轮询下一位（从该反主者逆时针下一位继续，直到绕回叫主者）
+      // 反主玩家换底完成 → 以该反主者为基准重新轮询一整圈（逆时针，绕回反主者本人时停止）
       const counterP = S.kittyOwner;
       const nextP    = this.prev(counterP);
-      this._counterTurn(nextP, S.caller, () => this._startPlaying());
+      this._counterTurn(nextP, counterP, () => this._startPlaying());
     }
   },
 
@@ -961,15 +961,183 @@ const G = {
     return 0;
   },
 
+  // 按跟牌规则计算"必须出的同花色牌"列表（含牌型约束）
+  // 返回 { must: Card[], canFill: Card[], hasCombination: boolean }
+  //   must           = 必须包含在出牌中的同花色牌（已按规则选好牌型）
+  //   canFill        = 手中剩余同花色牌（must选完后还能继续凑张数的候选）
+  //   hasCombination = true 表示找到了可匹配的牌型组合（对子/三张/联对），
+  //                    false 表示只有散牌（验证层不做牌型约束，张数约束由外层保证）
+  _mustFollowCards(hand, n) {
+    const lg   = suitGroup(S.leadCards[0]);
+    const same = hand.filter(c => suitGroup(c) === lg);
+    if (same.length === 0) return { must: [], canFill: [], hasCombination: false };
+
+    const leadN    = S.leadCards.length;
+    const leadType = this._playType(S.leadCards);
+
+    // 辅助：从 same 中去掉 combo 里的牌，返回剩余同花色牌
+    const removeFromSame = (combo) => {
+      const used = [...combo];
+      return same.filter(c => {
+        const idx = used.indexOf(c);
+        if (idx !== -1) { used.splice(idx, 1); return false; }
+        return true;
+      });
+    };
+
+    // ---- 对子首出 ----
+    if (leadN === 2 && leadType.type === 'pair') {
+      const pairCards = this._findPairsInGroup(same);
+      if (pairCards.length >= 2) {
+        // 有完整对子：必须先出对子
+        const onePair = pairCards.slice(0, 2);
+        return { must: onePair, canFill: removeFromSame(onePair), hasCombination: true };
+      }
+      // 没有完整对子：同花色散牌全部当作 canFill（调用方保证张数）
+      const need = Math.min(n, same.length);
+      return { must: same.slice(0, need), canFill: same.slice(need), hasCombination: false };
+    }
+
+    // ---- 三张组合首出（AAK/KKA/677/778） ----
+    if (leadN === 3 && (leadType.type === 'trio_high_pair' || leadType.type === 'trio_low_pair')) {
+      const matchCombo = this._findTrioCombo(same, leadType.type);
+      if (matchCombo) {
+        return { must: matchCombo, canFill: removeFromSame(matchCombo), hasCombination: true };
+      }
+      // 没有匹配三张组合：退而求其次找对子
+      const pairCards = this._findPairsInGroup(same);
+      if (pairCards.length >= 2) {
+        const onePair = pairCards.slice(0, 2);
+        return { must: onePair, canFill: removeFromSame(onePair), hasCombination: true };
+      }
+      // 只有散牌：全部同花色凑张数
+      const need = Math.min(n, same.length);
+      return { must: same.slice(0, need), canFill: same.slice(need), hasCombination: false };
+    }
+
+    // ---- 联对首出 ----
+    if (leadN >= 4 && leadN % 2 === 0 && leadType.type === 'chain') {
+      const chainCombo = this._findChainCombo(same, leadN);
+      if (chainCombo) {
+        return { must: chainCombo, canFill: removeFromSame(chainCombo), hasCombination: true };
+      }
+      // 退而求其次：有对子先出对子
+      const pairCards = this._findPairsInGroup(same);
+      if (pairCards.length >= 2) {
+        const onePair = pairCards.slice(0, 2);
+        return { must: onePair, canFill: removeFromSame(onePair), hasCombination: true };
+      }
+      // 只有散牌
+      const need = Math.min(n, same.length);
+      return { must: same.slice(0, need), canFill: same.slice(need), hasCombination: false };
+    }
+
+    // ---- 其他（单张等）：按张数凑 ----
+    const need = Math.min(n, same.length);
+    return { must: same.slice(0, need), canFill: same.slice(need), hasCombination: false };
+  },
+
+  // 辅助：在一组牌中找所有对子，返回这些牌的列表（每组2张）
+  _findPairsInGroup(cards) {
+    const byVal = {};
+    for (const c of cards) {
+      const v = cardVal(c);
+      if (!byVal[v]) byVal[v] = [];
+      byVal[v].push(c);
+    }
+    const result = [];
+    for (const v of Object.keys(byVal)) {
+      if (byVal[v].length >= 2) result.push(byVal[v][0], byVal[v][1]);
+    }
+    return result;
+  },
+
+  // 辅助：在一组同花色牌中找 trio 组合（AAK=trio_high_pair / KKA=trio_low_pair 等）
+  _findTrioCombo(cards, type) {
+    const n = cards.length;
+    if (n < 3) return null;
+    // 枚举所有3张组合
+    for (let i = 0; i < n - 2; i++)
+      for (let j = i + 1; j < n - 1; j++)
+        for (let k = j + 1; k < n; k++) {
+          const combo = [cards[i], cards[j], cards[k]];
+          const pt    = this._playType(combo);
+          if (pt.type === type) return combo;
+        }
+    return null;
+  },
+
+  // 辅助：在一组同花色牌中找最大长度 ≥ needN 的联对（或尽量接近的联对）
+  _findChainCombo(cards, needN) {
+    // 先找所有对子
+    const byVal = {};
+    for (const c of cards) {
+      const v = cardVal(c);
+      if (!byVal[v]) byVal[v] = [];
+      byVal[v].push(c);
+    }
+    const pairVals = Object.keys(byVal)
+      .filter(v => byVal[v].length >= 2)
+      .map(Number)
+      .sort((a, b) => a - b);
+    if (pairVals.length < 2) return null;
+
+    // 找最长连续对子段（点值相邻）
+    let best = null;
+    let bestLen = 0;
+    for (let start = 0; start < pairVals.length; start++) {
+      let end = start;
+      while (end + 1 < pairVals.length && pairVals[end + 1] === pairVals[end] + 1) end++;
+      const len = end - start + 1;
+      if (len >= 2 && len * 2 >= bestLen) {
+        bestLen = len * 2;
+        // 取该段联对的牌（尽量凑到 needN，不足则取全部）
+        const take = Math.min(len, Math.ceil(needN / 2));
+        const combo = [];
+        for (let t = start; t < start + take; t++) {
+          combo.push(byVal[pairVals[t]][0], byVal[pairVals[t]][1]);
+        }
+        best = combo;
+      }
+    }
+    return best && best.length >= 2 ? best : null;
+  },
+
   // 跟牌验证
   _validateFollow(hand, played) {
-    const lg       = suitGroup(S.leadCards[0]);
-    const same     = hand.filter(c => suitGroup(c) === lg);
+    const lg         = suitGroup(S.leadCards[0]);
+    const same       = hand.filter(c => suitGroup(c) === lg);
     const playedSame = played.filter(c => suitGroup(c) === lg);
-    if (same.length > 0) {
-      const need = Math.min(S.leadCards.length, same.length);
-      if (playedSame.length < need) {
-        return `有${lg === '_T' ? '主牌' : (SNAME[lg] || lg)}必须先出！`;
+    const suitName   = lg === '_T' ? '主牌' : (SNAME[lg] || lg);
+
+    if (same.length === 0) return null; // 无同花色，可自由垫牌
+
+    const n    = S.leadCards.length;
+    const need = Math.min(n, same.length);
+
+    // 1. 同花色张数检查：无论有无牌型，同花色牌必须尽量出足
+    if (playedSame.length < need) {
+      return `有${suitName}必须先出！`;
+    }
+
+    // 2. 牌型约束检查（仅当找到可匹配的牌型组合时才约束）
+    const { must, hasCombination } = this._mustFollowCards(hand, n);
+    if (hasCombination && must.length > 0) {
+      // 检查 played 是否包含了 must 中要求的所有牌
+      const mustCopy   = [...must];
+      const playedCopy = [...played];
+      let violated = false;
+      for (const m of mustCopy) {
+        const idx = playedCopy.indexOf(m);
+        if (idx === -1) { violated = true; break; }
+        playedCopy.splice(idx, 1);
+      }
+      if (violated) {
+        const leadType = this._playType(S.leadCards);
+        if (leadType.type === 'pair') return `有${suitName}对子必须出对子！`;
+        if (leadType.type === 'trio_high_pair' || leadType.type === 'trio_low_pair') return `有同花色三张组合必须先出！`;
+        if (leadType.type === 'chain') return `有${suitName}联对必须先出联对！`;
+        return `必须先出符合牌型的同花色牌！`;
       }
     }
     return null;
@@ -1088,16 +1256,34 @@ const G = {
   _aiFollow(p, h, n) {
     const lg   = suitGroup(S.leadCards[0]);
     const same = h.filter(c => suitGroup(c) === lg);
-    const res  = [];
-    if (same.length >= n) {
-      same.sort((a, b) => cardVal(a) - cardVal(b));
-      return same.slice(0, n);
+
+    if (same.length === 0) {
+      // 缺色：垫牌，优先垫非分牌
+      const rem = [...h].sort((a, b) => cardScore(a) - cardScore(b));
+      return rem.slice(0, n);
     }
-    res.push(...same);
-    const rem = h.filter(c => suitGroup(c) !== lg);
-    rem.sort((a, b) => cardScore(a) - cardScore(b));
-    res.push(...rem.slice(0, n - res.length));
-    return res.slice(0, n);
+
+    // 按规则提取必须出的同花色牌（含牌型约束）
+    const { must, canFill } = this._mustFollowCards(h, n);
+    const result = [...must];
+
+    if (result.length < n) {
+      // 同花色不足 n 张：先用同花色填满，再从其他花色垫牌
+      const stillNeed = n - result.length;
+      const usedSet   = new Set(result);
+      const moreSame  = canFill.filter(c => !usedSet.has(c));
+      result.push(...moreSame.slice(0, stillNeed));
+    }
+
+    if (result.length < n) {
+      // 还不够：从非同花色中垫最小非分牌
+      const used = new Set(result);
+      const rem  = h.filter(c => !used.has(c) && suitGroup(c) !== lg);
+      rem.sort((a, b) => cardScore(a) - cardScore(b) || cardVal(a) - cardVal(b));
+      result.push(...rem.slice(0, n - result.length));
+    }
+
+    return result.slice(0, n);
   },
 
   // ---------- 本轮结算 ----------
@@ -1105,10 +1291,11 @@ const G = {
     const winner = this._calcWinner();
     let rs = 0;
     for (const e of S.playedRound) for (const c of e.cards) rs += cardScore(c);
+    // 无论哪方赢牌，都记录该玩家本局累计拿走的分数（用于显示）
+    S.playerScores[winner] = (S.playerScores[winner] || 0) + rs;
     if (S.attackers.includes(winner)) {
+      // 只有抓分方赢牌时，分数才计入抓分方总分
       S.atkScore += rs;
-      // 本轮得分全归赢牌玩家统计
-      S.playerScores[winner] = (S.playerScores[winner] || 0) + rs;
     }
     this.updateInfo();
     this.renderAll(); // 刷新各玩家pInfo得分
@@ -1326,24 +1513,38 @@ const G = {
     const playerIsAtk = S.attackers.includes(0);
     let txt, cls, chips;
     // 按客观结果确定胜负和筹码，txt/cls 依据玩家实际阵营描述
+    let baseUnit;
     if (sc === 0) {
-      chips = '保分方 +4筹';
+      baseUnit = 4;
       txt   = playerIsAtk ? `大光（0分），你们输了！` : `大光（0分），你们赢了！`;
       cls   = playerIsAtk ? 'rBig' : 'rWin';
     } else if (sc <= 40) {
-      chips = '保分方 +2筹';
+      baseUnit = 2;
       txt   = playerIsAtk ? `小光（${sc}分），你们输了！` : `小光（${sc}分），你们赢了！`;
       cls   = playerIsAtk ? 'rLose' : 'rWin';
     } else if (sc < 80) {
-      chips = '保分方 +1筹';
+      baseUnit = 1;
       txt   = playerIsAtk ? `抓分不足（${sc}分），你们输了！` : `防守成功（${sc}分），你们赢了！`;
       cls   = playerIsAtk ? 'rLose' : 'rWin';
     } else {
-      const extra = Math.floor((sc - 80) / 40) + 1;
-      chips = `抓分方 +${extra}筹`;
+      baseUnit = Math.floor((sc - 80) / 40) + 1;
       txt   = playerIsAtk ? `抓分方胜！（${sc}分）` : `防守失败（${sc}分），你们输了！`;
       cls   = playerIsAtk ? 'rWin' : 'rLose';
     }
+    // 含反主倍数的实际每败方出筹数
+    const chipUnit = baseUnit * (S.multiplier || 1);
+    // 胜败方人数
+    const atkWin   = sc >= 80;
+    const winSide  = atkWin ? S.attackers : S.defenders;
+    const loseSide = atkWin ? S.defenders : S.attackers;
+    const winCount  = winSide.length;
+    const loseCount = loseSide.length;
+    const winGet    = chipUnit === 0 ? 0 : Math.round(chipUnit * loseCount / winCount);
+    const winLabel  = atkWin ? '抓分方' : '保分方';
+    const loseLabel = atkWin ? '保分方' : '抓分方';
+    chips = chipUnit === 0
+      ? '平局'
+      : `${winLabel}每人 +${winGet}筹 / ${loseLabel}每人 -${chipUnit}筹`;
     const atkN = S.attackers.map(i => S.ps[i].name).join('、');
     const defN = S.defenders.map(i => S.ps[i].name).join('、');
     const kb   = S.kitty.reduce((s, c) => s + cardScore(c), 0);
@@ -1357,22 +1558,24 @@ const G = {
       <div class="sRes ${cls}">${txt}</div>
     `;
     document.getElementById('mSettle').style.display = 'flex';
-    // 每局结算时，为每个玩家生成胜负/得分/筹码记录
-    const chipUnit  = chips.includes('+') ? parseInt(chips.match(/\d+/)?.[0] || '0') : 0;
-    const atkWin    = sc >= 80;   // 抓分方是否获胜
+    // 每局结算时，为每个玩家生成胜负/得分/筹码记录（变量复用上方已计算的值）
     const playerRec = S.ps.map((pl, i) => {
       const isAtk  = S.attackers.includes(i);
       const isCall = i === S.caller;
       const win    = isAtk ? atkWin : !atkWin;
-      const pChips = isAtk
-        ? (atkWin  ? `+${chipUnit}` : `-${chipUnit}`)
-        : (!atkWin ? `+${chipUnit}` : `-${chipUnit}`);
+      let pChipsNum = 0;
+      if (chipUnit > 0) {
+        pChipsNum = win ? winGet : -chipUnit;
+      }
+      const pChips = chipUnit === 0
+        ? (win ? '平' : '-')
+        : (pChipsNum >= 0 ? `+${pChipsNum}` : `${pChipsNum}`);
       return {
         name:   pl.name,
         team:   isCall ? '守（叫主）' : isAtk ? '抓分方' : '守分方',
         score:  S.playerScores[i] || 0,
         win,
-        chips:  chipUnit === 0 ? (win ? '平' : '-') : pChips,
+        chips:  pChips,
       };
     });
     S.history.push({
