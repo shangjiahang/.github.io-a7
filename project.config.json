@@ -1,0 +1,41 @@
+{
+  "appid": "wx06d3154df14be316",
+  "projectname": "��÷��7",
+  "setting": {
+    "es6": true,
+    "minified": false,
+    "enhance": true,
+    "coverView": true,
+    "postcss": false,
+    "minifyWXSS": false,
+    "autoPrefixWXSS": false,
+    "minifyWXML": false,
+    "minifyJS": false,
+    "uploadWithSourceMap": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true
+  },
+  "libVersion": "3.3.4",
+  "condition": {},
+  "compileType": "game",
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "isGameTourist": false,
+  "editorSetting": {}
+}
